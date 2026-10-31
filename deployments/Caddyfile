@@ -1,0 +1,11 @@
+# Caddy reverse proxy for LightMail (automatic HTTPS).
+{$LIGHTMAIL_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy lightmail:8080 {
+		# Server-Sent Events must not be buffered.
+		flush_interval -1
+	}
+	request_body {
+		max_size 40MB
+	}
+}

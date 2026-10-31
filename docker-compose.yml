@@ -1,0 +1,80 @@
+# LightMail — standard deployment.
+#
+#   1. cp .env.example .env            (edit LIGHTMAIL_PUBLIC_URL, OAuth2 IDs…)
+#   2. mkdir -p secrets && docker run --rm lightmail:latest gen-key > secrets/master_key
+#      (or: make secrets)
+#   3. docker compose up -d --build
+#
+# The app listens on 127.0.0.1:8080 only: put an HTTPS reverse proxy in
+# front of it (see deployments/), or enable the bundled Caddy service:
+#   LIGHTMAIL_DOMAIN=mail.example.com docker compose --profile caddy up -d
+
+name: lightmail
+
+services:
+  lightmail:
+    build:
+      context: .
+      args:
+        VERSION: ${LIGHTMAIL_VERSION:-dev}
+    image: lightmail:${LIGHTMAIL_VERSION:-latest}
+    container_name: lightmail
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      LIGHTMAIL_DATA_DIR: /data
+      LIGHTMAIL_MASTER_KEY_FILE: /run/secrets/lightmail_master_key
+      # Soft memory limit for the Go runtime (keep below mem_limit).
+      GOMEMLIMIT: ${LIGHTMAIL_GOMEMLIMIT:-384MiB}
+    secrets:
+      - lightmail_master_key
+    ports:
+      - "127.0.0.1:${LIGHTMAIL_HOST_PORT:-8080}:8080"
+    volumes:
+      - lightmail-data:/data
+    # Hardening: read-only root FS, no capabilities, no privilege escalation.
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    # Resource limits (measured idle footprint is ~20-40 MB, see docs/TESTING.md)
+    mem_limit: ${LIGHTMAIL_MEM_LIMIT:-512m}
+    cpus: ${LIGHTMAIL_CPUS:-1.0}
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional HTTPS reverse proxy with automatic Let's Encrypt certificates.
+  caddy:
+    image: caddy:2.10-alpine
+    profiles: ["caddy"]
+    restart: unless-stopped
+    depends_on: [lightmail]
+    environment:
+      LIGHTMAIL_DOMAIN: ${LIGHTMAIL_DOMAIN:?set LIGHTMAIL_DOMAIN to use the caddy profile}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deployments/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+
+secrets:
+  lightmail_master_key:
+    file: ./secrets/master_key
+
+volumes:
+  lightmail-data:
+  caddy-data:
+  caddy-config:

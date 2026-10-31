@@ -1,0 +1,14 @@
+.git
+.env
+secrets/
+**/node_modules
+frontend/dist
+backend/internal/web/dist
+**/*.db
+**/*.db-wal
+**/*.db-shm
+data/
+backups/
+*.tar.gz
+*.exe
+docs/

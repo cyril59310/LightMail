@@ -1,0 +1,10 @@
+# Labels to add to the lightmail service when Traefik is your reverse proxy.
+# Remove the "ports" section of the service and attach it to Traefik's network.
+services:
+  lightmail:
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.lightmail.rule=Host(`mail.example.com`)
+      - traefik.http.routers.lightmail.entrypoints=websecure
+      - traefik.http.routers.lightmail.tls.certresolver=letsencrypt
+      - traefik.http.services.lightmail.loadbalancer.server.port=8080

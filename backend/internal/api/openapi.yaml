@@ -1,0 +1,470 @@
+openapi: 3.1.0
+info:
+  title: LightMail API
+  version: "1"
+  description: |
+    REST API of LightMail, a self-hosted multi-account mail client.
+
+    Authentication: session cookie `lm_session` (HttpOnly, SameSite=Lax) obtained
+    with `POST /auth/login`. Every state-changing request (POST, PUT, PATCH,
+    DELETE) must send the `X-CSRF-Token` header returned by `/auth/login` or
+    `/auth/me`, with `Content-Type: application/json` for JSON bodies. Requests
+    whose `Origin` differs from the configured public URL are refused.
+
+    Errors use the shape `{"error": {"code": "...", "message": "..."}}`.
+    Lists are paginated with an opaque `cursor` (`nextCursor` in responses).
+servers:
+  - url: /api/v1
+security:
+  - session: []
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: lm_session
+    metricsToken:
+      type: http
+      scheme: bearer
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+    limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+    Address:
+      type: object
+      required: [addr]
+      properties:
+        name: { type: string }
+        addr: { type: string, format: email }
+    Endpoint:
+      type: object
+      properties:
+        host: { type: string }
+        port: { type: integer }
+        security: { type: string, enum: [tls, starttls] }
+    Account:
+      type: object
+      description: Never contains passwords or tokens.
+      properties:
+        id: { type: integer }
+        provider: { type: string }
+        email: { type: string }
+        displayName: { type: string }
+        senderName: { type: string }
+        color: { type: string }
+        imap: { $ref: "#/components/schemas/Endpoint" }
+        smtp: { $ref: "#/components/schemas/Endpoint" }
+        authType: { type: string, enum: [password, oauth2] }
+        username: { type: string }
+        hasPassword: { type: boolean }
+        oauthConnected: { type: boolean }
+        oauthExpiresAt: { type: integer }
+        hasCustomCa: { type: boolean }
+        signatureHtml: { type: string }
+        isDefault: { type: boolean }
+        syncEnabled: { type: boolean }
+        syncIntervalSec: { type: integer }
+        idleEnabled: { type: boolean }
+        smtpSavesSent: { type: boolean }
+        status: { type: string, enum: [pending, ok, syncing, error, auth_error, paused] }
+        lastError: { type: string }
+        lastSyncAt: { type: integer }
+        lastSyncOkAt: { type: integer }
+    AccountInput:
+      type: object
+      properties:
+        provider: { type: string, description: "Preset id (google, yahoo, icloud, custom…)" }
+        email: { type: string }
+        username: { type: string }
+        password: { type: string, description: "Write-only; tested before being stored encrypted" }
+        displayName: { type: string }
+        senderName: { type: string }
+        color: { type: string }
+        imap: { $ref: "#/components/schemas/Endpoint" }
+        smtp: { $ref: "#/components/schemas/Endpoint" }
+        tlsCaPem: { type: string, description: "Additional trusted CA (PEM)" }
+        signatureHtml: { type: string }
+        syncEnabled: { type: boolean }
+        syncIntervalSec: { type: integer }
+        idleEnabled: { type: boolean }
+        smtpSavesSent: { type: boolean }
+        allowSmtpError: { type: boolean }
+    TestResult:
+      type: object
+      properties:
+        imapOk: { type: boolean }
+        imapError: { type: string }
+        smtpOk: { type: boolean }
+        smtpError: { type: string }
+    Folder:
+      type: object
+      properties:
+        id: { type: integer }
+        accountId: { type: integer }
+        name: { type: string }
+        delimiter: { type: string }
+        role: { type: string, enum: ["", inbox, sent, drafts, trash, junk, archive, all, flagged, important] }
+        selectable: { type: boolean }
+        syncEnabled: { type: boolean }
+        total: { type: integer }
+        unread: { type: integer }
+        local: { type: integer }
+        backfillDone: { type: boolean }
+    Message:
+      type: object
+      properties:
+        id: { type: integer }
+        accountId: { type: integer }
+        folderId: { type: integer }
+        uid: { type: integer }
+        messageId: { type: string }
+        threadId: { type: integer }
+        subject: { type: string }
+        from: { $ref: "#/components/schemas/Address" }
+        to: { type: array, items: { $ref: "#/components/schemas/Address" } }
+        cc: { type: array, items: { $ref: "#/components/schemas/Address" } }
+        date: { type: integer, description: Unix seconds }
+        size: { type: integer }
+        seen: { type: boolean }
+        flagged: { type: boolean }
+        answered: { type: boolean }
+        draft: { type: boolean }
+        hasAttachments: { type: boolean }
+        priority: { type: integer }
+        snippet: { type: string }
+        bodyFetched: { type: boolean }
+    Attachment:
+      type: object
+      properties:
+        id: { type: integer }
+        filename: { type: string }
+        contentType: { type: string }
+        size: { type: integer }
+        contentId: { type: string }
+        inline: { type: boolean }
+    MessagePage:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Message" } }
+        nextCursor: { type: string }
+        warning: { type: string }
+    Draft:
+      type: object
+      properties:
+        id: { type: integer }
+        accountId: { type: integer }
+        mode: { type: string, enum: [new, reply, replyall, forward] }
+        relatedMessageId: { type: integer }
+        to: { type: array, items: { $ref: "#/components/schemas/Address" } }
+        cc: { type: array, items: { $ref: "#/components/schemas/Address" } }
+        bcc: { type: array, items: { $ref: "#/components/schemas/Address" } }
+        subject: { type: string }
+        bodyHtml: { type: string }
+        bodyText: { type: string }
+        isHtml: { type: boolean }
+        uploads: { type: array, items: { type: string } }
+        keepOriginalAttachments: { type: boolean }
+    SendInput:
+      allOf:
+        - $ref: "#/components/schemas/Draft"
+        - type: object
+          properties:
+            draftId: { type: integer }
+            requestReceipt: { type: boolean }
+            undoSeconds: { type: integer, minimum: 0, maximum: 30 }
+    OutboxItem:
+      type: object
+      properties:
+        id: { type: integer }
+        accountId: { type: integer }
+        status: { type: string, enum: [scheduled, sending, retry, sent, failed, ambiguous, canceled] }
+        messageId: { type: string }
+        subject: { type: string }
+        recipients: { type: array, items: { type: string } }
+        attempts: { type: integer }
+        nextAttemptAt: { type: integer }
+        lastError: { type: string }
+paths:
+  /health:
+    get:
+      summary: Liveness probe (database reachable)
+      security: []
+      responses:
+        "200": { description: OK }
+        "503": { description: Unavailable }
+  /auth/login:
+    post:
+      summary: Sign in (rate limited per IP and per username)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+      responses:
+        "200": { description: Session created; returns csrfToken }
+        "401": { $ref: "#/components/responses/Error" }
+        "429": { description: Locked out; see Retry-After }
+  /auth/me:
+    get:
+      summary: Current session, CSRF token and limits
+      security: []
+      responses: { "200": { description: OK } }
+  /auth/logout:
+    post: { summary: Sign out, responses: { "204": { description: OK } } }
+  /auth/logout-all:
+    post: { summary: Revoke every session of the user, responses: { "204": { description: OK } } }
+  /auth/password:
+    post:
+      summary: Change password (other sessions are revoked)
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { current: { type: string }, new: { type: string, minLength: 10 } } }
+      responses: { "204": { description: OK }, "403": { $ref: "#/components/responses/Error" } }
+  /auth/sessions:
+    get: { summary: Active sessions, responses: { "200": { description: OK } } }
+  /providers:
+    get: { summary: Known providers and their settings, responses: { "200": { description: OK } } }
+  /providers/detect:
+    get:
+      summary: Guess provider from an email address
+      parameters: [{ name: email, in: query, schema: { type: string } }]
+      responses: { "200": { description: OK } }
+  /accounts:
+    get:
+      summary: List accounts
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Account" } } } } } }
+    post:
+      summary: Add an IMAP/SMTP account with a password (connection is tested first)
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/AccountInput" } } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Account" } } } }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { description: Connection test failed (includes test result) }
+  /accounts/test:
+    post:
+      summary: Test IMAP and SMTP settings without saving
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/AccountInput" } } } }
+      responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/TestResult" } } } } }
+  /accounts/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get: { summary: Get an account, responses: { "200": { description: OK } } }
+    patch:
+      summary: Update settings (server/password changes are tested)
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/AccountInput" } } } }
+      responses: { "200": { description: OK } }
+    delete: { summary: Remove the account (OAuth2 tokens are revoked when possible), responses: { "204": { description: OK } } }
+  /accounts/{id}/sync:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post: { summary: Trigger a full synchronisation, responses: { "202": { description: Accepted } } }
+  /accounts/{id}/reconnect:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post: { summary: Clear errors and retry; returns authUrl for OAuth2 accounts without tokens, responses: { "200": { description: OK } } }
+  /accounts/{id}/default:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post: { summary: Make default sending account, responses: { "204": { description: OK } } }
+  /accounts/{id}/revoke:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post: { summary: Revoke OAuth2 authorisation and delete tokens, responses: { "200": { description: OK } } }
+  /oauth/{provider}/start:
+    parameters: [{ name: provider, in: path, required: true, schema: { type: string, enum: [google, microsoft] } }]
+    post:
+      summary: Start Authorization Code + PKCE flow; returns the provider URL
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { accountId: { type: integer, description: "set to re-authenticate" }, loginHint: { type: string } } }
+      responses: { "200": { description: "{authUrl}" }, "400": { $ref: "#/components/responses/Error" } }
+  /oauth/{provider}/callback:
+    parameters: [{ name: provider, in: path, required: true, schema: { type: string } }]
+    get:
+      summary: Provider redirect target; validates state (single use, bound to the session) and redirects to the web client
+      responses: { "303": { description: Redirect to /#/oauth-result } }
+  /folders:
+    get:
+      parameters: [{ name: accountId, in: query, schema: { type: integer } }]
+      summary: Folders with counters
+      responses: { "200": { description: OK } }
+    post:
+      summary: Create a folder on the server
+      requestBody: { content: { application/json: { schema: { type: object, properties: { accountId: { type: integer }, name: { type: string } } } } } }
+      responses: { "201": { description: Created } }
+  /folders/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    patch:
+      summary: Enable/disable synchronisation of a folder
+      requestBody: { content: { application/json: { schema: { type: object, properties: { syncEnabled: { type: boolean } } } } } }
+      responses: { "204": { description: OK } }
+    delete: { summary: Delete a custom folder on the server, responses: { "204": { description: OK } } }
+  /counters:
+    get: { summary: Unread counters for the sidebar, responses: { "200": { description: OK } } }
+  /contacts:
+    get:
+      summary: Recipient autocompletion from known correspondents
+      parameters: [{ name: q, in: query, schema: { type: string } }]
+      responses: { "200": { description: OK } }
+  /messages:
+    get:
+      summary: List messages (folder, unified or starred view)
+      parameters:
+        - { name: view, in: query, schema: { type: string, enum: [folder, unified, starred] } }
+        - { name: folderId, in: query, schema: { type: integer } }
+        - { name: role, in: query, schema: { type: string, enum: [inbox, sent, drafts, archive, trash, junk] } }
+        - { name: accountId, in: query, schema: { type: integer } }
+        - { name: unread, in: query, schema: { type: string, enum: ["1"] } }
+        - { name: attachments, in: query, schema: { type: string, enum: ["1"] } }
+        - { $ref: "#/components/parameters/cursor" }
+        - { $ref: "#/components/parameters/limit" }
+      responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/MessagePage" } } } } }
+  /search:
+    get:
+      summary: Search (Gmail-style operators); server=1 runs IMAP SEARCH in folderId
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, maxLength: 500 }, description: "from: to: subject: has:attachment is:unread is:starred after: before: newer_than: older_than: in: account: -term \"phrase\"" }
+        - { name: folderId, in: query, schema: { type: integer } }
+        - { name: accountId, in: query, schema: { type: integer } }
+        - { name: server, in: query, schema: { type: string, enum: ["1"] } }
+        - { $ref: "#/components/parameters/cursor" }
+        - { $ref: "#/components/parameters/limit" }
+      responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/MessagePage" } } } } }
+  /messages/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      summary: Message detail; the body is downloaded from the server on first access
+      parameters: [{ name: quote, in: query, schema: { type: string, enum: ["1"] }, description: include a sanitised fragment for replies }]
+      responses: { "200": { description: OK }, "410": { description: Message no longer on the server } }
+  /messages/{id}/body.html:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      summary: Sanitised HTML document for a sandboxed iframe (CSP script-src 'none'); remote content only with remote=1
+      parameters: [{ name: remote, in: query, schema: { type: string, enum: ["1"] } }]
+      responses: { "200": { description: text/html } }
+  /messages/{id}/raw:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get: { summary: Export as .eml, responses: { "200": { description: message/rfc822 } } }
+  /messages/{id}/headers:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get: { summary: Raw headers (technical details), responses: { "200": { description: OK } } }
+  /messages/{id}/attachments/{att}:
+    parameters:
+      - { $ref: "#/components/parameters/id" }
+      - { name: att, in: path, required: true, schema: { type: integer } }
+    get:
+      summary: Download an attachment (fetched on demand and cached); inline=1 only renders safe image types
+      parameters: [{ name: inline, in: query, schema: { type: string, enum: ["1"] } }]
+      responses: { "200": { description: File } }
+  /messages/{id}/edit-draft:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post: { summary: Open a server-side draft for editing, responses: { "201": { description: Draft } } }
+  /messages/actions:
+    post:
+      summary: Bulk action, applied on the IMAP server then locally
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids, action]
+              properties:
+                ids: { type: array, items: { type: integer }, maxItems: 1000 }
+                action: { type: string, enum: [read, unread, star, unstar, archive, trash, delete, move, spam, notspam] }
+                folderId: { type: integer, description: destination for move }
+      responses: { "200": { description: "{ok:[ids], failed:{id:reason}}" } }
+  /messages/send:
+    post:
+      summary: Queue a message for sending (202); delivery status is pushed via /events
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/SendInput" } } } }
+      responses: { "202": { description: Queued, content: { application/json: { schema: { $ref: "#/components/schemas/OutboxItem" } } } } }
+  /uploads:
+    post:
+      summary: Upload an attachment (multipart field "file")
+      requestBody: { content: { multipart/form-data: { schema: { type: object, properties: { file: { type: string, format: binary } } } } } }
+      responses: { "201": { description: Upload }, "413": { description: Too large } }
+  /uploads/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    delete: { summary: Remove an upload, responses: { "204": { description: OK } } }
+  /drafts:
+    get: { summary: Local drafts, responses: { "200": { description: OK } } }
+    post:
+      summary: Create a draft (synchronised to the server Drafts folder in the background)
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/Draft" } } } }
+      responses: { "201": { description: Created } }
+  /drafts/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get: { summary: Get a draft, responses: { "200": { description: OK } } }
+    put:
+      summary: Update a draft
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/Draft" } } } }
+      responses: { "200": { description: OK } }
+    delete: { summary: Delete a draft (and its server copy), responses: { "204": { description: OK } } }
+  /outbox:
+    get: { summary: Send queue, responses: { "200": { description: OK } } }
+  /outbox/{id}/cancel:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post: { summary: Cancel during the undo window, responses: { "204": { description: OK }, "409": { description: Already sending } } }
+  /outbox/{id}/retry:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post: { summary: Resend a failed or ambiguous message (explicit user decision), responses: { "204": { description: OK } } }
+  /outbox/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    delete: { summary: Remove a finished item, responses: { "204": { description: OK } } }
+  /notifications:
+    get: { summary: Recent notifications, responses: { "200": { description: OK } } }
+  /notifications/read:
+    post:
+      summary: Mark notifications as read (empty ids = all)
+      requestBody: { content: { application/json: { schema: { type: object, properties: { ids: { type: array, items: { type: integer } } } } } } }
+      responses: { "204": { description: OK } }
+  /events:
+    get:
+      summary: Server-Sent Events stream (account, folders, messages, newmail, outbox, notification)
+      responses: { "200": { description: text/event-stream } }
+  /settings:
+    get: { summary: User settings with defaults, responses: { "200": { description: OK } } }
+    put:
+      summary: Update settings (allow-listed keys and values)
+      requestBody: { content: { application/json: { schema: { type: object, additionalProperties: { type: string } } } } }
+      responses: { "200": { description: OK }, "400": { $ref: "#/components/responses/Error" } }
+  /status:
+    get: { summary: Runtime, database and account status, responses: { "200": { description: OK } } }
+  /metrics:
+    get:
+      summary: Prometheus metrics (session or bearer LIGHTMAIL_METRICS_TOKEN)
+      security: [{ session: [] }, { metricsToken: [] }]
+      responses: { "200": { description: text/plain } }
+  /openapi.yaml:
+    get: { summary: This document, security: [], responses: { "200": { description: OK } } }

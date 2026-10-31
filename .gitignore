@@ -1,0 +1,17 @@
+# secrets and local data
+.env
+secrets/
+data/
+backups/
+*.db
+*.db-wal
+*.db-shm
+*.tar.gz
+
+# build output
+node_modules/
+frontend/dist/
+backend/internal/web/dist/*
+!backend/internal/web/dist/.keep
+*.exe
+/bin/
