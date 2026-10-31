@@ -526,6 +526,22 @@ input[type='checkbox'] {
 .nav-account {
   margin-bottom: 6px;
 }
+.nav-category {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.nav-category:hover {
+  color: var(--text);
+}
+.nav-category .icon.closed {
+  transform: rotate(-90deg);
+}
 .nav-footer {
   margin-top: auto;
   padding-top: 12px;
@@ -1277,6 +1293,69 @@ legend {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+.organizer-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0 0 2px;
+  border-bottom: 2px solid transparent;
+}
+.organizer-list.drop-end {
+  border-bottom-color: var(--accent);
+}
+.organizer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  border-top: 2px solid transparent;
+  cursor: grab;
+}
+.organizer-row:hover {
+  background: var(--hover);
+}
+.organizer-row.dragging {
+  opacity: 0.5;
+}
+.organizer-row.drop-before {
+  border-top-color: var(--accent);
+}
+.organizer-row .icon-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.organizer-grip {
+  flex: none;
+}
+.organizer-select {
+  width: auto;
+  max-width: 40%;
+  flex: none;
+}
+.organizer-empty {
+  padding: 4px 6px;
+}
+.organizer-group-head input,
+.organizer-add input {
+  flex: 1;
+  min-width: 0;
+}
+.organizer-group-head {
+  margin-bottom: 4px;
+}
+@media (max-width: 760px) {
+  .organizer-row,
+  .organizer-add {
+    flex-wrap: wrap;
+  }
+  .organizer-select {
+    max-width: none;
+    width: 100%;
+  }
+  .organizer-add input {
+    flex-basis: 100%;
+  }
 }
 .account-card-head {
   display: flex;

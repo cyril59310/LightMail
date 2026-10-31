@@ -457,6 +457,7 @@ paths:
     get: { summary: User settings with defaults, responses: { "200": { description: OK } } }
     put:
       summary: Update settings (allow-listed keys and values)
+      description: 'accountLayout is a JSON string giving the account order and categories: {"ungrouped":[1],"groups":[{"id":"g1","name":"Work","accounts":[2]}]}'
       requestBody: { content: { application/json: { schema: { type: object, additionalProperties: { type: string } } } } }
       responses: { "200": { description: OK }, "400": { $ref: "#/components/responses/Error" } }
   /status:

@@ -3,7 +3,7 @@ import { ApiError, api } from '../api'
 import { t } from '../i18n'
 import { getState, loadOutbox, openCompose, setState, toast, useStore, type ComposeRequest } from '../store'
 import type { Account, Address, Draft, MessageDetail, OutboxItem, Upload } from '../types'
-import { cleanFragment, displayName, escapeHTML, formatAddress, formatSize, fullDate, htmlToText, mentionsAttachment, textToHTML } from '../util'
+import { accountLayout, cleanFragment, displayName, escapeHTML, formatAddress, formatSize, fullDate, htmlToText, mentionsAttachment, orderedAccounts, textToHTML } from '../util'
 import { confirmDialog } from './Dialogs'
 import { AddressField, RichEditor } from './Editor'
 import { Icon } from './Icons'
@@ -308,7 +308,7 @@ export function Composer({ req, onClose }: { req: ComposeRequest; onClose: () =>
             <div className="field-row">
               <label className="field-label" htmlFor="cmp-from">{t('compose.from')}</label>
               <select id="cmp-from" value={st.accountId} onChange={(e) => switchAccount(Number(e.target.value))}>
-                {accounts.map((a) => (
+                {orderedAccounts(accountLayout(settings.accountLayout, accounts), accounts).map((a) => (
                   <option key={a.id} value={a.id}>
                     {(a.senderName || a.displayName) && (a.senderName || a.displayName) !== a.email ? `${a.senderName || a.displayName} <${a.email}>` : a.email}
                   </option>

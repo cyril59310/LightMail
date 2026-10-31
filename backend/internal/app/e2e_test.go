@@ -245,6 +245,14 @@ func TestLoginSessionAndCSRF(t *testing.T) {
 	if resp, _ := c.do("PUT", "/api/v1/settings", map[string]string{"unknownKey": "1"}); resp.StatusCode != 400 {
 		t.Fatal("unknown setting accepted")
 	}
+	if resp, _ := c.do("PUT", "/api/v1/settings", map[string]string{"accountLayout": `{"ungrouped":[2],"groups":[{"id":"g1","name":"Travail","accounts":[1]}]}`}); resp.StatusCode != 200 {
+		t.Fatalf("valid account layout refused: %d", resp.StatusCode)
+	}
+	for _, bad := range []string{`null`, `[]`, `{"groups":[{"id":"g1","name":"  ","accounts":[]}]}`, `{"groups":[{"id":"a b","name":"x"}]}`, `{"groups":[{"id":"g","name":"x"},{"id":"g","name":"y"}]}`, `{"ungrouped":"x"}`} {
+		if resp, _ := c.do("PUT", "/api/v1/settings", map[string]string{"accountLayout": bad}); resp.StatusCode != 400 {
+			t.Fatalf("invalid account layout accepted: %s", bad)
+		}
+	}
 	// Logout invalidates the session server-side.
 	c.do("POST", "/api/v1/auth/logout", nil)
 	if resp, _ := c.do("GET", "/api/v1/settings", nil); resp.StatusCode != 401 {

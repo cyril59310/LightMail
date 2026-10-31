@@ -1,6 +1,6 @@
 import { getLanguage, t } from './i18n'
 import { getState } from './store'
-import type { Account, Address, Folder } from './types'
+import type { Account, AccountLayout, Address, Folder } from './types'
 
 function tz(): string | undefined {
   return getState().settings.timezone || undefined
@@ -104,6 +104,40 @@ export function accountColor(a?: Account): string {
   if (!a) return '#888'
   if (a.color && /^#[0-9a-fA-F]{3,8}$/.test(a.color)) return a.color
   return palette[a.id % palette.length]
+}
+
+/** Reads the accountLayout setting: unknown ids are dropped, accounts not placed yet come last without a category. */
+export function accountLayout(raw: string | undefined, accounts: Account[]): AccountLayout {
+  let stored: Partial<AccountLayout> | null = null
+  try {
+    stored = JSON.parse(raw || '{}')
+  } catch {
+    // unreadable value: same as no layout
+  }
+  const left = new Set(accounts.map((a) => a.id))
+  const take = (ids: unknown) => (Array.isArray(ids) ? ids.filter((id: number) => left.delete(id)) : [])
+  const ungrouped = take(stored?.ungrouped)
+  const groups = (Array.isArray(stored?.groups) ? stored.groups : []).map((g) => ({ id: g.id, name: g.name, accounts: take(g.accounts) }))
+  return { ungrouped: [...ungrouped, ...accounts.filter((a) => left.has(a.id)).map((a) => a.id)], groups }
+}
+
+/** Accounts in display order, ignoring the categories. */
+export function orderedAccounts(layout: AccountLayout, accounts: Account[]): Account[] {
+  const byId = new Map(accounts.map((a) => [a.id, a]))
+  return [...layout.ungrouped, ...layout.groups.flatMap((g) => g.accounts)].map((id) => byId.get(id)!)
+}
+
+/** Moves an account into a category (null = none), before another account or at the end. */
+export function moveAccount(layout: AccountLayout, id: number, groupId: string | null, beforeId?: number): AccountLayout {
+  const place = (list: number[], gid: string | null) => {
+    const next = list.filter((x) => x !== id)
+    if (gid === groupId) {
+      const at = beforeId === undefined ? -1 : next.indexOf(beforeId)
+      next.splice(at < 0 ? next.length : at, 0, id)
+    }
+    return next
+  }
+  return { ungrouped: place(layout.ungrouped, null), groups: layout.groups.map((g) => ({ ...g, accounts: place(g.accounts, g.id) })) }
 }
 
 export function folderLabel(f: Folder): string {

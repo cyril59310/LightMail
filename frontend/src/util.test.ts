@@ -1,5 +1,33 @@
 import { describe, expect, it } from 'vitest'
-import { escapeHTML, isEmail, mentionsAttachment, parseAddresses } from './util'
+import type { Account } from './types'
+import { accountLayout, escapeHTML, isEmail, mentionsAttachment, moveAccount, orderedAccounts, parseAddresses } from './util'
+
+describe('account layout', () => {
+  const accounts = [1, 2, 3, 4].map((id) => ({ id })) as Account[]
+  const stored = JSON.stringify({ ungrouped: [3, 99], groups: [{ id: 'a', name: 'Pro', accounts: [2, 3] }, { id: 'b', name: 'Perso', accounts: [] }] })
+
+  it('defaults to the server order', () => {
+    for (const raw of [undefined, '{}', 'null', 'not json']) {
+      expect(accountLayout(raw, accounts)).toEqual({ ungrouped: [1, 2, 3, 4], groups: [] })
+    }
+  })
+
+  it('drops unknown and duplicate ids and keeps new accounts', () => {
+    const l = accountLayout(stored, accounts)
+    expect(l).toEqual({ ungrouped: [3, 1, 4], groups: [{ id: 'a', name: 'Pro', accounts: [2] }, { id: 'b', name: 'Perso', accounts: [] }] })
+    expect(orderedAccounts(l, accounts).map((a) => a.id)).toEqual([3, 1, 4, 2])
+  })
+
+  it('moves accounts within and across categories', () => {
+    const l = accountLayout(stored, accounts)
+    expect(moveAccount(l, 4, null, 3).ungrouped).toEqual([4, 3, 1])
+    expect(moveAccount(l, 3, null).ungrouped).toEqual([1, 4, 3])
+    const moved = moveAccount(l, 1, 'a', 2)
+    expect(moved.ungrouped).toEqual([3, 4])
+    expect(moved.groups[0].accounts).toEqual([1, 2])
+    expect(moveAccount(moved, 1, 'b').groups.map((g) => g.accounts)).toEqual([[2], [1]])
+  })
+})
 
 describe('parseAddresses', () => {
   it('parses names, quotes and separators', () => {

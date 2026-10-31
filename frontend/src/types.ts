@@ -39,6 +39,17 @@ export interface Account {
   lastSyncOkAt?: number
 }
 
+export interface AccountGroup {
+  id: string
+  name: string
+  accounts: number[]
+}
+
+export interface AccountLayout {
+  ungrouped: number[]
+  groups: AccountGroup[]
+}
+
 export interface Provider {
   id: string
   name: string

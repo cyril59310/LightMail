@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { ApiError, api } from '../api'
 import { setLanguage, t } from '../i18n'
 import { href, navigate, useRoute } from '../router'
-import { loadAccounts, loadFolders, saveSettings, toast, useStore } from '../store'
-import type { Account } from '../types'
-import { accountColor, accountLabel, folderLabel, formatSize, relativeTime } from '../util'
+import { getState, loadAccounts, loadFolders, saveSettings, setState, toast, useStore } from '../store'
+import type { Account, AccountLayout } from '../types'
+import { accountColor, accountLabel, accountLayout, folderLabel, formatSize, moveAccount, orderedAccounts, relativeTime } from '../util'
 import { EndpointFields, startOAuth } from './AccountWizard'
 import { confirmDialog } from './Dialogs'
 import { RichEditor } from './Editor'
@@ -126,8 +126,159 @@ function General() {
   )
 }
 
+/** Applied immediately so that successive moves build on each other, restored if the server refuses. */
+async function saveAccountLayout(layout: AccountLayout) {
+  const previous = getState().settings.accountLayout
+  const value = JSON.stringify(layout)
+  setState((s) => ({ settings: { ...s.settings, accountLayout: value } }))
+  try {
+    await saveSettings({ accountLayout: value })
+  } catch (e) {
+    setState((s) => ({ settings: { ...s.settings, accountLayout: previous } }))
+    toast(e instanceof ApiError ? e.message : t('err.network'), 'error')
+  }
+}
+
+function AccountOrganizer() {
+  const accounts = useStore((s) => s.accounts)
+  const raw = useStore((s) => s.settings.accountLayout)
+  const layout = accountLayout(raw, accounts)
+  const [name, setName] = useState('')
+  const [dragged, setDragged] = useState<number | null>(null)
+  const [over, setOver] = useState<string | null>(null)
+  const byId = new Map(accounts.map((a) => [a.id, a]))
+
+  const drop = (groupId: string | null, beforeId?: number) => {
+    if (dragged !== null && dragged !== beforeId) void saveAccountLayout(moveAccount(layout, dragged, groupId, beforeId))
+    setDragged(null)
+    setOver(null)
+  }
+  const addGroup = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) return
+    void saveAccountLayout({ ...layout, groups: [...layout.groups, { id: 'g' + Date.now().toString(36), name: name.trim(), accounts: [] }] })
+    setName('')
+  }
+  const moveGroup = (i: number, delta: number) => {
+    const groups = [...layout.groups]
+    groups.splice(i + delta, 0, groups.splice(i, 1)[0])
+    void saveAccountLayout({ ...layout, groups })
+  }
+  const renameGroup = (id: string, value: string) => {
+    void saveAccountLayout({ ...layout, groups: layout.groups.map((g) => (g.id === id ? { ...g, name: value.trim() } : g)) })
+  }
+  const removeGroup = async (id: string, groupName: string) => {
+    if (!(await confirmDialog(t('acct.categoryDeleteConfirm', { name: groupName }), { danger: true, confirmLabel: t('act.delete') }))) return
+    const g = layout.groups.find((x) => x.id === id)!
+    void saveAccountLayout({ ungrouped: [...layout.ungrouped, ...g.accounts], groups: layout.groups.filter((x) => x.id !== id) })
+  }
+
+  const renderList = (groupId: string | null, ids: number[]) => {
+    const zone = groupId ?? ''
+    return (
+      <ul
+        className={'organizer-list' + (over === 'end:' + zone ? ' drop-end' : '')}
+        onDragOver={(e) => {
+          if (dragged === null) return
+          e.preventDefault()
+          setOver('end:' + zone)
+        }}
+        onDrop={(e) => {
+          e.preventDefault()
+          drop(groupId)
+        }}
+      >
+        {ids.map((id, i) => {
+          const a = byId.get(id)!
+          return (
+            <li
+              key={id}
+              className={'organizer-row' + (dragged === id ? ' dragging' : '') + (over === 'before:' + id ? ' drop-before' : '')}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = 'move'
+                e.dataTransfer.setData('text/plain', a.email)
+                setDragged(id)
+              }}
+              onDragEnd={() => {
+                setDragged(null)
+                setOver(null)
+              }}
+              onDragOver={(e) => {
+                if (dragged === null) return
+                e.preventDefault()
+                e.stopPropagation()
+                setOver('before:' + id)
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                drop(groupId, id)
+              }}
+            >
+              <Icon name="grip" size={16} className="muted organizer-grip" />
+              <span className="dot" style={{ background: accountColor(a) }} />
+              <span className="nav-label" title={a.email}>{accountLabel(a)}</span>
+              <button className="icon-btn small" disabled={i === 0} aria-label={t('acct.moveUp', { name: accountLabel(a) })} title={t('acct.moveUp', { name: accountLabel(a) })} onClick={() => void saveAccountLayout(moveAccount(layout, id, groupId, ids[i - 1]))}>
+                <Icon name="up" size={15} />
+              </button>
+              <button className="icon-btn small" disabled={i === ids.length - 1} aria-label={t('acct.moveDown', { name: accountLabel(a) })} title={t('acct.moveDown', { name: accountLabel(a) })} onClick={() => void saveAccountLayout(moveAccount(layout, id, groupId, ids[i + 2]))}>
+                <Icon name="down" size={15} />
+              </button>
+              {layout.groups.length > 0 && (
+                <select className="organizer-select" aria-label={t('acct.categoryOf', { name: accountLabel(a) })} value={zone} onChange={(e) => void saveAccountLayout(moveAccount(layout, id, e.target.value || null))}>
+                  <option value="">{t('acct.noCategory')}</option>
+                  {layout.groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </li>
+          )
+        })}
+        {ids.length === 0 && <li className="muted small organizer-empty">{t('acct.categoryEmpty')}</li>}
+      </ul>
+    )
+  }
+
+  return (
+    <section className="card organizer">
+      <h3>{t('acct.organize')}</h3>
+      <p className="muted small">{t('acct.organizeHint')}</p>
+      {layout.groups.length > 0 && <div className="field-label">{t('acct.noCategory')}</div>}
+      {renderList(null, layout.ungrouped)}
+      {layout.groups.map((g, i) => (
+        <div key={g.id} className="organizer-group">
+          <div className="row gap organizer-group-head">
+            <input key={g.name} defaultValue={g.name} maxLength={60} aria-label={t('acct.categoryName')} onBlur={(e) => (e.target.value.trim() ? e.target.value.trim() !== g.name && renameGroup(g.id, e.target.value) : (e.target.value = g.name))} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+            <button className="icon-btn small" disabled={i === 0} aria-label={t('acct.moveUp', { name: g.name })} title={t('acct.moveUp', { name: g.name })} onClick={() => moveGroup(i, -1)}>
+              <Icon name="up" size={15} />
+            </button>
+            <button className="icon-btn small" disabled={i === layout.groups.length - 1} aria-label={t('acct.moveDown', { name: g.name })} title={t('acct.moveDown', { name: g.name })} onClick={() => moveGroup(i, 1)}>
+              <Icon name="down" size={15} />
+            </button>
+            <button className="icon-btn small" aria-label={t('acct.categoryDelete', { name: g.name })} title={t('acct.categoryDelete', { name: g.name })} onClick={() => void removeGroup(g.id, g.name)}>
+              <Icon name="trash" size={15} />
+            </button>
+          </div>
+          {renderList(g.id, g.accounts)}
+        </div>
+      ))}
+      <form className="row gap organizer-add" onSubmit={addGroup}>
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder={t('acct.categoryName')} aria-label={t('acct.categoryName')} />
+        <button className="btn" disabled={!name.trim()}>
+          <Icon name="plus" size={15} /> {t('acct.categoryAdd')}
+        </button>
+      </form>
+    </section>
+  )
+}
+
 function Accounts({ selected }: { selected?: number }) {
   const accounts = useStore((s) => s.accounts)
+  const raw = useStore((s) => s.settings.accountLayout)
   if (accounts.length === 0) {
     return (
       <div className="card">
@@ -140,7 +291,8 @@ function Accounts({ selected }: { selected?: number }) {
   }
   return (
     <div className="accounts-settings">
-      {accounts.map((a) => (
+      {accounts.length > 1 && <AccountOrganizer />}
+      {orderedAccounts(accountLayout(raw, accounts), accounts).map((a) => (
         <AccountCard key={a.id} account={a} open={selected === a.id || accounts.length === 1} />
       ))}
       <a className="btn" href={href('add-account')}>
@@ -194,6 +346,9 @@ function AccountCard({ account: a, open: initiallyOpen }: { account: Account; op
     try {
       await api.del(`/accounts/${a.id}`)
       await Promise.allSettled([loadAccounts(), loadFolders()])
+      // SQLite can reuse the id: a future account must not inherit this place.
+      const { settings, accounts } = getState()
+      void saveAccountLayout(accountLayout(settings.accountLayout, accounts.filter((x) => x.id !== a.id)))
       navigate('settings/accounts')
     } catch (e) {
       toast(e instanceof ApiError ? e.message : t('err.network'), 'error')

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 //go:embed openapi.yaml
@@ -161,6 +162,9 @@ func validSetting(k, v string) bool {
 	if strings.HasPrefix(k, "notify.") {
 		return notifyKinds[strings.TrimPrefix(k, "notify.")] && (v == "on" || v == "off")
 	}
+	if k == "accountLayout" {
+		return validAccountLayout(v)
+	}
 	re, ok := settingRules[k]
 	if !ok {
 		return false
@@ -173,6 +177,33 @@ func validSetting(k, v string) bool {
 	return re.MatchString(v)
 }
 
+var accountGroupID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
+
+// validAccountLayout checks the sidebar organisation: display order of the
+// accounts and named categories. Unknown account ids are ignored by the client.
+func validAccountLayout(v string) bool {
+	var l struct {
+		Ungrouped []int64 `json:"ungrouped"`
+		Groups    []struct {
+			ID       string  `json:"id"`
+			Name     string  `json:"name"`
+			Accounts []int64 `json:"accounts"`
+		} `json:"groups"`
+	}
+	if !strings.HasPrefix(v, "{") || json.Unmarshal([]byte(v), &l) != nil || len(l.Groups) > 50 {
+		return false
+	}
+	seen := make(map[string]bool, len(l.Groups))
+	for _, g := range l.Groups {
+		name := strings.TrimSpace(g.Name)
+		if !accountGroupID.MatchString(g.ID) || seen[g.ID] || name == "" || utf8.RuneCountInString(name) > 60 {
+			return false
+		}
+		seen[g.ID] = true
+	}
+	return true
+}
+
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	st, err := s.DB.Settings(r.Context(), userFrom(r).ID)
 	if err != nil {
@@ -183,7 +214,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		"language": "fr", "theme": "system", "timezone": "", "pageSize": "50", "density": "comfortable",
 		"markReadOnOpen": "true", "confirmDelete": "true", "confirmSendNoSubject": "true", "defaultFormat": "html",
 		"browserNotifications": "false", "undoSendSeconds": strconv.Itoa(int(s.Cfg.UndoSendDelay.Seconds())), "unifiedAccounts": "all",
-		"readingPane": "right", "threadView": "true", "remoteImages": "ask",
+		"readingPane": "right", "threadView": "true", "remoteImages": "ask", "accountLayout": "{}",
 	}
 	for k, v := range st {
 		defaults[k] = v

@@ -3,7 +3,7 @@ import { t } from '../i18n'
 import { href, useRoute } from '../router'
 import { openCompose, useStore } from '../store'
 import type { Account, Folder } from '../types'
-import { accountColor, accountLabel, folderDepth, folderLabel } from '../util'
+import { accountColor, accountLabel, accountLayout, folderDepth, folderLabel } from '../util'
 import { Icon } from './Icons'
 
 const roleIcon: Record<string, string> = {
@@ -26,11 +26,13 @@ function NavLink({ to, icon, label, count, active, accent, onNavigate }: { to: s
 export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onLogout: () => void }) {
   const route = useRoute()
   const accounts = useStore((s) => s.accounts)
+  const rawLayout = useStore((s) => s.settings.accountLayout)
   const folders = useStore((s) => s.folders)
   const counters = useStore((s) => s.counters)
   const outbox = useStore((s) => s.outbox)
   const me = useStore((s) => s.me)
   const [collapsed, setCollapsed] = useState<Record<number, boolean>>({})
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
   const cur = route.path.join('/')
   const pendingOut = outbox.filter((o) => o.status !== 'sent' && o.status !== 'canceled').length
   const hasJunk = folders.some((f) => f.role === 'junk')
@@ -51,6 +53,44 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
     }
     return m
   }, [folders])
+
+  const layout = useMemo(() => accountLayout(rawLayout, accounts), [rawLayout, accounts])
+  const byId = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts])
+
+  const renderAccount = (id: number) => {
+    const a: Account = byId.get(id)!
+    const list = byAccount.get(a.id) ?? []
+    const open = !collapsed[a.id]
+    const problem = a.status === 'error' || a.status === 'auth_error'
+    return (
+      <div key={a.id} className="nav-account">
+        <button className="nav-account-head" onClick={() => setCollapsed((c) => ({ ...c, [a.id]: open }))} aria-expanded={open} title={a.email}>
+          <span className="dot" style={{ background: accountColor(a) }} />
+          <span className="nav-label">{accountLabel(a)}</span>
+          {problem && <Icon name="alert" className="warn" size={15} title={a.lastError || t(('acct.status.' + a.status) as never)} />}
+          {a.status === 'syncing' && <Icon name="refresh" className="spin muted" size={14} />}
+        </button>
+        {open &&
+          list
+            .filter((f) => f.selectable && (f.syncEnabled || f.role === 'inbox'))
+            .map((f) => (
+              <a
+                key={f.id}
+                href={href('folder/' + f.id)}
+                className={'nav-item folder' + (cur === 'folder/' + f.id ? ' active' : '')}
+                style={{ paddingLeft: 28 + folderDepth(f) * 12 }}
+                onClick={onNavigate}
+                title={f.name}
+              >
+                <Icon name={roleIcon[f.role] ?? 'folder'} size={16} />
+                <span className="nav-label">{folderLabel(f)}</span>
+                {f.unread > 0 && f.role !== 'sent' && f.role !== 'trash' && f.role !== 'drafts' && <span className="badge subtle">{f.unread}</span>}
+              </a>
+            ))}
+      </div>
+    )
+  }
+  const groups = layout.groups.filter((g) => g.accounts.length > 0)
 
   return (
     <nav className="sidebar" aria-label="Navigation">
@@ -80,36 +120,17 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
         {(pendingOut > 0 || cur === 'outbox') && <NavLink to="outbox" icon="outbox" label={t('nav.outbox')} count={pendingOut} active={cur === 'outbox'} onNavigate={onNavigate} />}
       </div>
 
-      <div className="nav-section-title">{t('nav.accounts')}</div>
-      {accounts.map((a: Account) => {
-        const list = byAccount.get(a.id) ?? []
-        const open = !collapsed[a.id]
-        const problem = a.status === 'error' || a.status === 'auth_error'
+      {(layout.ungrouped.length > 0 || groups.length === 0) && <div className="nav-section-title">{t('nav.accounts')}</div>}
+      {layout.ungrouped.map(renderAccount)}
+      {groups.map((g) => {
+        const open = !collapsedGroups[g.id]
         return (
-          <div key={a.id} className="nav-account">
-            <button className="nav-account-head" onClick={() => setCollapsed((c) => ({ ...c, [a.id]: open }))} aria-expanded={open} title={a.email}>
-              <span className="dot" style={{ background: accountColor(a) }} />
-              <span className="nav-label">{accountLabel(a)}</span>
-              {problem && <Icon name="alert" className="warn" size={15} title={a.lastError || t(('acct.status.' + a.status) as never)} />}
-              {a.status === 'syncing' && <Icon name="refresh" className="spin muted" size={14} />}
+          <div key={g.id}>
+            <button className="nav-section-title nav-category" onClick={() => setCollapsedGroups((c) => ({ ...c, [g.id]: open }))} aria-expanded={open} title={g.name}>
+              <span className="nav-label">{g.name}</span>
+              <Icon name="chevron" size={14} className={open ? '' : 'closed'} />
             </button>
-            {open &&
-              list
-                .filter((f) => f.selectable && (f.syncEnabled || f.role === 'inbox'))
-                .map((f) => (
-                  <a
-                    key={f.id}
-                    href={href('folder/' + f.id)}
-                    className={'nav-item folder' + (cur === 'folder/' + f.id ? ' active' : '')}
-                    style={{ paddingLeft: 28 + folderDepth(f) * 12 }}
-                    onClick={onNavigate}
-                    title={f.name}
-                  >
-                    <Icon name={roleIcon[f.role] ?? 'folder'} size={16} />
-                    <span className="nav-label">{folderLabel(f)}</span>
-                    {f.unread > 0 && f.role !== 'sent' && f.role !== 'trash' && f.role !== 'drafts' && <span className="badge subtle">{f.unread}</span>}
-                  </a>
-                ))}
+            {open && g.accounts.map(renderAccount)}
           </div>
         )
       })}
