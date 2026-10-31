@@ -43,6 +43,7 @@ export interface AccountGroup {
   id: string
   name: string
   accounts: number[]
+  collapsed?: boolean
 }
 
 export interface AccountLayout {

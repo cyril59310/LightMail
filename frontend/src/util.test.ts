@@ -18,6 +18,13 @@ describe('account layout', () => {
     expect(orderedAccounts(l, accounts).map((a) => a.id)).toEqual([3, 1, 4, 2])
   })
 
+  it('keeps the collapsed state of categories', () => {
+    const raw = JSON.stringify({ groups: [{ id: 'a', name: 'Pro', accounts: [2], collapsed: true }] })
+    const l = accountLayout(raw, accounts)
+    expect(l.groups[0].collapsed).toBe(true)
+    expect(moveAccount(l, 1, 'a').groups[0].collapsed).toBe(true)
+  })
+
   it('moves accounts within and across categories', () => {
     const l = accountLayout(stored, accounts)
     expect(moveAccount(l, 4, null, 3).ungrouped).toEqual([4, 3, 1])

@@ -1,7 +1,8 @@
 // Tiny global store (no external state library).
 import { useSyncExternalStore } from 'react'
-import { api } from './api'
-import type { Account, Counters, Folder, Me, Notification, OutboxItem, Settings } from './types'
+import { ApiError, api } from './api'
+import { t } from './i18n'
+import type { Account, AccountLayout, Counters, Folder, Me, Notification, OutboxItem, Settings } from './types'
 
 export interface Toast {
   id: number
@@ -110,6 +111,19 @@ export async function loadCounters() {
 export async function loadSettings() {
   const s = await api.get<Settings>('/settings')
   setState({ settings: s })
+}
+
+/** Applied immediately so that successive changes build on each other, restored if the server refuses. */
+export async function saveAccountLayout(layout: AccountLayout) {
+  const previous = state.settings.accountLayout
+  const value = JSON.stringify(layout)
+  setState((s) => ({ settings: { ...s.settings, accountLayout: value } }))
+  try {
+    await saveSettings({ accountLayout: value })
+  } catch (e) {
+    setState((s) => ({ settings: { ...s.settings, accountLayout: previous } }))
+    toast(e instanceof ApiError ? e.message : t('err.network'), 'error')
+  }
 }
 
 export async function loadNotifications() {

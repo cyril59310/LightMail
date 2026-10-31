@@ -117,7 +117,7 @@ export function accountLayout(raw: string | undefined, accounts: Account[]): Acc
   const left = new Set(accounts.map((a) => a.id))
   const take = (ids: unknown) => (Array.isArray(ids) ? ids.filter((id: number) => left.delete(id)) : [])
   const ungrouped = take(stored?.ungrouped)
-  const groups = (Array.isArray(stored?.groups) ? stored.groups : []).map((g) => ({ id: g.id, name: g.name, accounts: take(g.accounts) }))
+  const groups = (Array.isArray(stored?.groups) ? stored.groups : []).map((g) => ({ ...g, accounts: take(g.accounts) }))
   return { ungrouped: [...ungrouped, ...accounts.filter((a) => left.has(a.id)).map((a) => a.id)], groups }
 }
 

@@ -185,9 +185,10 @@ func validAccountLayout(v string) bool {
 	var l struct {
 		Ungrouped []int64 `json:"ungrouped"`
 		Groups    []struct {
-			ID       string  `json:"id"`
-			Name     string  `json:"name"`
-			Accounts []int64 `json:"accounts"`
+			ID        string  `json:"id"`
+			Name      string  `json:"name"`
+			Accounts  []int64 `json:"accounts"`
+			Collapsed bool    `json:"collapsed"`
 		} `json:"groups"`
 	}
 	if !strings.HasPrefix(v, "{") || json.Unmarshal([]byte(v), &l) != nil || len(l.Groups) > 50 {

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { t } from '../i18n'
 import { href, useRoute } from '../router'
-import { openCompose, useStore } from '../store'
+import { openCompose, saveAccountLayout, useStore } from '../store'
 import type { Account, Folder } from '../types'
 import { accountColor, accountLabel, accountLayout, folderDepth, folderLabel } from '../util'
 import { Icon } from './Icons'
@@ -32,7 +32,6 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
   const outbox = useStore((s) => s.outbox)
   const me = useStore((s) => s.me)
   const [collapsed, setCollapsed] = useState<Record<number, boolean>>({})
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
   const cur = route.path.join('/')
   const pendingOut = outbox.filter((o) => o.status !== 'sent' && o.status !== 'canceled').length
   const hasJunk = folders.some((f) => f.role === 'junk')
@@ -123,10 +122,10 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
       {(layout.ungrouped.length > 0 || groups.length === 0) && <div className="nav-section-title">{t('nav.accounts')}</div>}
       {layout.ungrouped.map(renderAccount)}
       {groups.map((g) => {
-        const open = !collapsedGroups[g.id]
+        const open = !g.collapsed
         return (
           <div key={g.id}>
-            <button className="nav-section-title nav-category" onClick={() => setCollapsedGroups((c) => ({ ...c, [g.id]: open }))} aria-expanded={open} title={g.name}>
+            <button className="nav-section-title nav-category" onClick={() => void saveAccountLayout({ ...layout, groups: layout.groups.map((x) => (x.id === g.id ? { ...x, collapsed: open } : x)) })} aria-expanded={open} title={g.name}>
               <span className="nav-label">{g.name}</span>
               <Icon name="chevron" size={14} className={open ? '' : 'closed'} />
             </button>

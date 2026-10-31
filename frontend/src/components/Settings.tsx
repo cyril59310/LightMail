@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { ApiError, api } from '../api'
 import { setLanguage, t } from '../i18n'
 import { href, navigate, useRoute } from '../router'
-import { getState, loadAccounts, loadFolders, saveSettings, setState, toast, useStore } from '../store'
-import type { Account, AccountLayout } from '../types'
+import { getState, loadAccounts, loadFolders, saveAccountLayout, saveSettings, toast, useStore } from '../store'
+import type { Account } from '../types'
 import { accountColor, accountLabel, accountLayout, folderLabel, formatSize, moveAccount, orderedAccounts, relativeTime } from '../util'
 import { EndpointFields, startOAuth } from './AccountWizard'
 import { confirmDialog } from './Dialogs'
@@ -124,19 +124,6 @@ function General() {
       )}
     </div>
   )
-}
-
-/** Applied immediately so that successive moves build on each other, restored if the server refuses. */
-async function saveAccountLayout(layout: AccountLayout) {
-  const previous = getState().settings.accountLayout
-  const value = JSON.stringify(layout)
-  setState((s) => ({ settings: { ...s.settings, accountLayout: value } }))
-  try {
-    await saveSettings({ accountLayout: value })
-  } catch (e) {
-    setState((s) => ({ settings: { ...s.settings, accountLayout: previous } }))
-    toast(e instanceof ApiError ? e.message : t('err.network'), 'error')
-  }
 }
 
 function AccountOrganizer() {
