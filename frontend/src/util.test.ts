@@ -1,6 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import type { Account } from './types'
-import { accountLayout, escapeHTML, isEmail, mentionsAttachment, moveAccount, orderedAccounts, parseAddresses } from './util'
+import type { Account, Endpoint } from './types'
+import { accountLayout, escapeHTML, hasServerPreset, isEmail, mentionsAttachment, moveAccount, orderedAccounts, parseAddresses, serverPresets } from './util'
+
+describe('server presets', () => {
+  const imap: Endpoint = { host: 'imap.x.fr', port: 993, security: 'tls' }
+  const smtp: Endpoint = { host: 'smtp.x.fr', port: 587, security: 'starttls' }
+
+  it('ignores unreadable values', () => {
+    for (const raw of [undefined, '', '{}', 'null', 'not json']) expect(serverPresets(raw)).toEqual([])
+  })
+
+  it('recognises the same servers', () => {
+    const list = serverPresets(JSON.stringify([{ id: 's', name: 'X', imap, smtp }]))
+    expect(hasServerPreset(list, { ...imap, host: 'IMAP.x.fr' }, smtp)).toBe(true)
+    expect(hasServerPreset(list, imap, { ...smtp, port: 465 })).toBe(false)
+  })
+})
 
 describe('account layout', () => {
   const accounts = [1, 2, 3, 4].map((id) => ({ id })) as Account[]

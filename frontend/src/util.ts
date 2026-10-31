@@ -1,6 +1,6 @@
 import { getLanguage, t } from './i18n'
 import { getState } from './store'
-import type { Account, AccountLayout, Address, Folder } from './types'
+import type { Account, AccountLayout, Address, Endpoint, Folder, ServerPreset } from './types'
 
 function tz(): string | undefined {
   return getState().settings.timezone || undefined
@@ -138,6 +138,22 @@ export function moveAccount(layout: AccountLayout, id: number, groupId: string |
     return next
   }
   return { ungrouped: place(layout.ungrouped, null), groups: layout.groups.map((g) => ({ ...g, accounts: place(g.accounts, g.id) })) }
+}
+
+/** Reads the serverPresets setting; an unreadable value means no preset. */
+export function serverPresets(raw: string | undefined): ServerPreset[] {
+  try {
+    const list = JSON.parse(raw || '[]')
+    return Array.isArray(list) ? list : []
+  } catch {
+    return []
+  }
+}
+
+/** Whether a preset already holds these servers. */
+export function hasServerPreset(presets: ServerPreset[], imap: Endpoint, smtp: Endpoint): boolean {
+  const same = (a: Endpoint, b: Endpoint) => a.host.toLowerCase() === b.host.toLowerCase() && a.port === b.port && a.security === b.security
+  return presets.some((p) => same(p.imap, imap) && same(p.smtp, smtp))
 }
 
 export function folderLabel(f: Folder): string {

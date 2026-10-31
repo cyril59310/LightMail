@@ -253,6 +253,19 @@ func TestLoginSessionAndCSRF(t *testing.T) {
 			t.Fatalf("invalid account layout accepted: %s", bad)
 		}
 	}
+	ep := `"imap":{"host":"imap.x.fr","port":993,"security":"tls"},"smtp":{"host":"smtp.x.fr","port":587,"security":"starttls"}`
+	if resp, _ := c.do("PUT", "/api/v1/settings", map[string]string{"serverPresets": `[{"id":"s1","name":"X",` + ep + `}]`}); resp.StatusCode != 200 {
+		t.Fatalf("valid server presets refused: %d", resp.StatusCode)
+	}
+	for _, bad := range []string{`null`, `{}`, `[{"id":"s1","name":" ",` + ep + `}]`, `[{"id":"s1","name":"X"}]`,
+		`[{"id":"s1","name":"X",` + ep + `},{"id":"s1","name":"Y",` + ep + `}]`,
+		`[{"id":"s1","name":"X","imap":{"host":"a b","port":993,"security":"tls"},"smtp":{"host":"s","port":465,"security":"tls"}}]`,
+		`[{"id":"s1","name":"X","imap":{"host":"i","port":0,"security":"tls"},"smtp":{"host":"s","port":465,"security":"tls"}}]`,
+		`[{"id":"s1","name":"X","imap":{"host":"i","port":993,"security":"none"},"smtp":{"host":"s","port":465,"security":"tls"}}]`} {
+		if resp, _ := c.do("PUT", "/api/v1/settings", map[string]string{"serverPresets": bad}); resp.StatusCode != 400 {
+			t.Fatalf("invalid server presets accepted: %s", bad)
+		}
+	}
 	// Logout invalidates the session server-side.
 	c.do("POST", "/api/v1/auth/logout", nil)
 	if resp, _ := c.do("GET", "/api/v1/settings", nil); resp.StatusCode != 401 {

@@ -51,6 +51,15 @@ export interface AccountLayout {
   groups: AccountGroup[]
 }
 
+/** Saved IMAP/SMTP configuration, reused when adding an account (no credentials). */
+export interface ServerPreset {
+  id: string
+  name: string
+  imap: Endpoint
+  smtp: Endpoint
+  tlsCaPem?: string
+}
+
 export interface Provider {
   id: string
   name: string

@@ -2,8 +2,10 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { ApiError, api } from '../api'
 import { hasKey, t } from '../i18n'
 import { navigate } from '../router'
-import { loadAccounts, loadFolders, toast } from '../store'
-import type { Account, Endpoint, Provider } from '../types'
+import { getState, loadAccounts, loadFolders, saveSettings, toast, useStore } from '../store'
+import type { Account, Endpoint, Provider, ServerPreset } from '../types'
+import { hasServerPreset, serverPresets } from '../util'
+import { confirmDialog } from './Dialogs'
 import { Icon } from './Icons'
 
 interface TestResult {
@@ -54,20 +56,50 @@ export function AccountWizard() {
   const [providers, setProviders] = useState<Provider[]>([])
   const [provider, setProvider] = useState<Provider | null>(null)
   const [forcePassword, setForcePassword] = useState(false)
+  const [preset, setPreset] = useState<ServerPreset | null>(null)
+  const presets = serverPresets(useStore((s) => s.settings.serverPresets))
 
   useEffect(() => {
     api.get<{ items: Provider[] }>('/providers').then((r) => setProviders(r.items)).catch(() => {})
   }, [])
 
+  const removePreset = async (p: ServerPreset) => {
+    if (!(await confirmDialog(t('wiz.presetDeleteConfirm', { name: p.name }), { danger: true, confirmLabel: t('act.delete') }))) return
+    try {
+      await saveSettings({ serverPresets: JSON.stringify(serverPresets(getState().settings.serverPresets).filter((x) => x.id !== p.id)) })
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : t('err.network'), 'error')
+    }
+  }
+
   if (!provider) {
     const list = featured.map((id) => providers.find((p) => p.id === id)).filter(Boolean) as Provider[]
+    const custom = providers.find((p) => p.id === 'custom')
     return (
       <div className="page">
         <h1>{t('wiz.title')}</h1>
+        {custom && presets.length > 0 && (
+          <>
+            <p className="muted">{t('wiz.presets')}</p>
+            <div className="provider-grid preset-grid">
+              {presets.map((p) => (
+                <div key={p.id} className="preset">
+                  <button className="provider-tile" title={`${p.imap.host} · ${p.smtp.host}`} onClick={() => { setPreset(p); setProvider(custom); setForcePassword(false) }}>
+                    <span className="provider-logo p-custom" aria-hidden="true">@</span>
+                    <span className="nav-label">{p.name}</span>
+                  </button>
+                  <button className="icon-btn small preset-delete" aria-label={t('wiz.presetDelete', { name: p.name })} title={t('wiz.presetDelete', { name: p.name })} onClick={() => void removePreset(p)}>
+                    <Icon name="x" size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
         <p className="muted">{t('wiz.choose')}</p>
         <div className="provider-grid">
           {list.map((p) => (
-            <button key={p.id} className="provider-tile" onClick={() => { setProvider(p); setForcePassword(false) }}>
+            <button key={p.id} className="provider-tile" onClick={() => { setPreset(null); setProvider(p); setForcePassword(false) }}>
               <span className={'provider-logo p-' + p.id} aria-hidden="true">{p.id === 'custom' ? '@' : p.name[0]}</span>
               <span>{p.id === 'custom' ? t('wiz.other') : p.name}</span>
               {p.authMethods.includes('oauth2') && <span className="tag">OAuth2</span>}
@@ -85,7 +117,7 @@ export function AccountWizard() {
       <button className="link" onClick={() => setProvider(null)}>
         <Icon name="back" size={14} /> {t('wiz.back')}
       </button>
-      <h1>{provider.id === 'custom' ? t('wiz.other') : provider.name}</h1>
+      <h1>{preset ? preset.name : provider.id === 'custom' ? t('wiz.other') : provider.name}</h1>
       {oauth && !forcePassword && (
         <div className="card">
           {provider.oauthConfigured ? (
@@ -109,27 +141,31 @@ export function AccountWizard() {
           )}
         </div>
       )}
-      {(!oauth || forcePassword) && passwordAllowed && <PasswordForm provider={provider} />}
+      {(!oauth || forcePassword) && passwordAllowed && <PasswordForm provider={provider} preset={preset} />}
     </div>
   )
 }
 
-function PasswordForm({ provider }: { provider: Provider }) {
+function PasswordForm({ provider, preset }: { provider: Provider; preset: ServerPreset | null }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [senderName, setSenderName] = useState('')
   const [username, setUsername] = useState('')
-  const [imap, setImap] = useState<Endpoint>(provider.imap)
-  const [smtp, setSmtp] = useState<Endpoint>(provider.smtp)
-  const [ca, setCa] = useState('')
-  const [advanced, setAdvanced] = useState(provider.id === 'custom' || provider.id === 'proton')
+  const [imap, setImap] = useState<Endpoint>(preset?.imap ?? provider.imap)
+  const [smtp, setSmtp] = useState<Endpoint>(preset?.smtp ?? provider.smtp)
+  const [ca, setCa] = useState(preset?.tlsCaPem ?? '')
+  const [advanced, setAdvanced] = useState(!preset && (provider.id === 'custom' || provider.id === 'proton'))
+  const [savePreset, setSavePreset] = useState(false)
+  const [presetName, setPresetName] = useState('')
+  const presets = serverPresets(useStore((s) => s.settings.serverPresets))
+  const canSavePreset = provider.id === 'custom' && presets.length < 20 && !hasServerPreset(presets, imap, smtp)
   const [result, setResult] = useState<TestResult | null>(null)
   const [busy, setBusy] = useState<'' | 'test' | 'add'>('')
   const [error, setError] = useState('')
   const [allowSmtpError, setAllowSmtpError] = useState(false)
 
   // Suggest imap./smtp.<domain> for custom servers until the user edits them.
-  const [hostsEdited, setHostsEdited] = useState(false)
+  const [hostsEdited, setHostsEdited] = useState(!!preset)
   useEffect(() => {
     if (provider.id !== 'custom' || hostsEdited) return
     const domain = email.split('@')[1]
@@ -163,6 +199,11 @@ function PasswordForm({ provider }: { provider: Provider }) {
       const a = await api.post<Account>('/accounts', body())
       setPassword('')
       toast(t('wiz.added'), 'success')
+      // Only saved once the servers are known to work; the account exists even if this fails.
+      if (savePreset && canSavePreset) {
+        const next: ServerPreset = { id: 's' + Date.now().toString(36), name: presetName.trim() || imap.host, imap, smtp, tlsCaPem: ca.trim() }
+        await saveSettings({ serverPresets: JSON.stringify([...presets, next]) }).catch(() => toast(t('wiz.presetSaveFailed'), 'error'))
+      }
       await Promise.allSettled([loadAccounts(), loadFolders()])
       navigate('settings/accounts?id=' + a.id)
     } catch (err) {
@@ -206,6 +247,19 @@ function PasswordForm({ provider }: { provider: Provider }) {
             <textarea rows={3} value={ca} onChange={(e) => setCa(e.target.value)} placeholder="-----BEGIN CERTIFICATE-----" spellCheck={false} />
             <span className="muted small">{t('wiz.caHint')}</span>
           </label>
+        </>
+      )}
+      {canSavePreset && (
+        <>
+          <label className="check small">
+            <input type="checkbox" checked={savePreset} onChange={(e) => setSavePreset(e.target.checked)} /> {t('wiz.presetSave')}
+          </label>
+          {savePreset && (
+            <label>
+              {t('wiz.presetName')}
+              <input value={presetName} placeholder={imap.host} onChange={(e) => setPresetName(e.target.value)} maxLength={60} />
+            </label>
+          )}
         </>
       )}
       {result && (

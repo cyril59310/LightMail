@@ -13,6 +13,9 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"lightmail/internal/accounts"
+	"lightmail/internal/store"
 )
 
 //go:embed openapi.yaml
@@ -165,6 +168,9 @@ func validSetting(k, v string) bool {
 	if k == "accountLayout" {
 		return validAccountLayout(v)
 	}
+	if k == "serverPresets" {
+		return validServerPresets(v)
+	}
 	re, ok := settingRules[k]
 	if !ok {
 		return false
@@ -177,7 +183,38 @@ func validSetting(k, v string) bool {
 	return re.MatchString(v)
 }
 
-var accountGroupID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
+var settingItemID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
+
+// validServerPresets checks the saved IMAP/SMTP configurations offered when
+// adding an account. They hold server settings only, never credentials.
+func validServerPresets(v string) bool {
+	var list []struct {
+		ID       string      `json:"id"`
+		Name     string      `json:"name"`
+		IMAP     endpointDTO `json:"imap"`
+		SMTP     endpointDTO `json:"smtp"`
+		TLSCAPEM string      `json:"tlsCaPem"`
+	}
+	if !strings.HasPrefix(v, "[") || json.Unmarshal([]byte(v), &list) != nil || len(list) > 20 {
+		return false
+	}
+	seen := make(map[string]bool, len(list))
+	for _, p := range list {
+		name := strings.TrimSpace(p.Name)
+		if !settingItemID.MatchString(p.ID) || seen[p.ID] || name == "" || utf8.RuneCountInString(name) > 60 {
+			return false
+		}
+		seen[p.ID] = true
+		// Same server rules as a real account; the address is a placeholder.
+		a := &store.Account{Email: "preset@example.invalid", Username: "preset", TLSCAPEM: p.TLSCAPEM,
+			IMAPHost: p.IMAP.Host, IMAPPort: p.IMAP.Port, IMAPSecurity: p.IMAP.Security,
+			SMTPHost: p.SMTP.Host, SMTPPort: p.SMTP.Port, SMTPSecurity: p.SMTP.Security}
+		if accounts.Validate(a) != nil {
+			return false
+		}
+	}
+	return true
+}
 
 // validAccountLayout checks the sidebar organisation: display order of the
 // accounts and named categories. Unknown account ids are ignored by the client.
@@ -197,7 +234,7 @@ func validAccountLayout(v string) bool {
 	seen := make(map[string]bool, len(l.Groups))
 	for _, g := range l.Groups {
 		name := strings.TrimSpace(g.Name)
-		if !accountGroupID.MatchString(g.ID) || seen[g.ID] || name == "" || utf8.RuneCountInString(name) > 60 {
+		if !settingItemID.MatchString(g.ID) || seen[g.ID] || name == "" || utf8.RuneCountInString(name) > 60 {
 			return false
 		}
 		seen[g.ID] = true
@@ -215,7 +252,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		"language": "fr", "theme": "system", "timezone": "", "pageSize": "50", "density": "comfortable",
 		"markReadOnOpen": "true", "confirmDelete": "true", "confirmSendNoSubject": "true", "defaultFormat": "html",
 		"browserNotifications": "false", "undoSendSeconds": strconv.Itoa(int(s.Cfg.UndoSendDelay.Seconds())), "unifiedAccounts": "all",
-		"readingPane": "right", "threadView": "true", "remoteImages": "ask", "accountLayout": "{}",
+		"readingPane": "right", "threadView": "true", "remoteImages": "ask", "accountLayout": "{}", "serverPresets": "[]",
 	}
 	for k, v := range st {
 		defaults[k] = v
@@ -225,7 +262,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	var kv map[string]string
-	if !readJSON(w, r, &kv, 32<<10) {
+	if !readJSON(w, r, &kv, 512<<10) { // serverPresets can hold CA certificates
 		return
 	}
 	if len(kv) > 100 {
