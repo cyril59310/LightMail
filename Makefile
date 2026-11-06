@@ -1,7 +1,7 @@
 # LightMail — development and operations shortcuts.
 # Windows users: run from Git Bash or WSL.
 
-VERSION ?= 0.1.0
+VERSION ?= $(shell node -p "require('./frontend/package.json').version")
 IMAGE   ?= lightmail
 COMPOSE ?= docker compose
 

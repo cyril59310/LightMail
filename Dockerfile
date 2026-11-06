@@ -11,7 +11,8 @@ WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
-RUN npm run build
+RUN npm run build \
+ && node -p "require('./package.json').version" > /src/VERSION
 
 # ---- 2. Go binary (pure Go, cross-compiled, no CGO) ---------------------
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS build
@@ -21,10 +22,13 @@ RUN go mod download
 COPY backend/ ./
 RUN rm -rf internal/web/dist
 COPY --from=web /src/frontend/dist ./internal/web/dist
+COPY --from=web /src/VERSION /src/VERSION
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
-ARG VERSION=dev
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+# Empty VERSION = the version of frontend/package.json.
+ARG VERSION=
+RUN VERSION="${VERSION:-$(cat /src/VERSION)}" \
+ && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags "-s -w -X lightmail/internal/api.Version=${VERSION}" -o /out/lightmail ./cmd/lightmail \
  && mkdir -p /out/data
 

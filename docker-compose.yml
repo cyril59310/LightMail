@@ -16,7 +16,8 @@ services:
     build:
       context: .
       args:
-        VERSION: ${LIGHTMAIL_VERSION:-dev}
+        # Empty = version of frontend/package.json
+        VERSION: ${LIGHTMAIL_VERSION:-}
     image: lightmail:${LIGHTMAIL_VERSION:-latest}
     container_name: lightmail
     restart: unless-stopped
