@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError, api } from '../api'
 import { setLanguage, t } from '../i18n'
 import { href, navigate, useRoute } from '../router'
@@ -12,16 +12,21 @@ import { RichEditor } from './Editor'
 import { TwoFactorSettings } from './TwoFactor'
 import { BrandMark, Icon } from './Icons'
 
-const tabs = ['general', 'accounts', 'notifications', 'security', 'about'] as const
+const tabs = ['general', 'accounts', 'notifications', 'security', 'users', 'about'] as const
+// Instance-wide tabs, reserved to administrators.
+const adminTabs: readonly string[] = ['users', 'about']
 
 export function SettingsPage() {
   const route = useRoute()
-  const tab = (route.path[1] as (typeof tabs)[number]) || 'general'
+  const isAdmin = useStore((s) => !!s.me?.user?.isAdmin)
+  const visible = tabs.filter((x) => isAdmin || !adminTabs.includes(x))
+  const asked = route.path[1] as (typeof tabs)[number]
+  const tab = asked && visible.includes(asked) ? asked : 'general'
   return (
     <div className="page settings">
       <h1>{t('set.title')}</h1>
       <div className="tabs" role="tablist">
-        {tabs.map((x) => (
+        {visible.map((x) => (
           <a key={x} role="tab" aria-selected={tab === x} className={'tab' + (tab === x ? ' active' : '')} href={href('settings/' + x)}>
             {t(('set.' + x) as never)}
           </a>
@@ -31,6 +36,7 @@ export function SettingsPage() {
       {tab === 'accounts' && <Accounts selected={Number(route.query.get('id')) || undefined} />}
       {tab === 'notifications' && <Notifications />}
       {tab === 'security' && <Security />}
+      {tab === 'users' && <Users />}
       {tab === 'about' && <About />}
     </div>
   )
@@ -667,6 +673,139 @@ function Security() {
         </button>
       </div>
     </>
+  )
+}
+
+interface UserRow {
+  id: number
+  username: string
+  isAdmin: boolean
+  totpEnabled: boolean
+  createdAt: number
+  current: boolean
+}
+
+function Users() {
+  const [users, setUsers] = useState<UserRow[] | null>(null)
+  const load = () =>
+    api
+      .get<{ items: UserRow[] }>('/users')
+      .then((r) => setUsers(r.items))
+      .catch((e) => toast(e instanceof ApiError ? e.message : t('err.network'), 'error'))
+  useEffect(() => {
+    void load()
+  }, [])
+  const adminCount = users?.filter((u) => u.isAdmin).length ?? 0
+
+  const setAdmin = async (u: UserRow, isAdmin: boolean) => {
+    if (!isAdmin && u.current && !(await confirmDialog(t('users.demoteSelf'), { danger: true, confirmLabel: t('users.demote') }))) return
+    try {
+      await api.patch('/users/' + u.id, { isAdmin })
+      if (u.current && !isAdmin) {
+        // Our own rights changed: hide the admin-only parts.
+        setState((s) => (s.me?.user ? { me: { ...s.me, user: { ...s.me.user, isAdmin: false } } } : {}))
+        navigate('settings/general')
+        return
+      }
+      toast(isAdmin ? t('users.promoted', { name: u.username }) : t('users.demoted', { name: u.username }), 'success')
+      await load()
+    } catch (e) {
+      toast(e instanceof ApiError ? (e.code === 'last_admin' ? t('users.lastAdmin') : e.message) : t('err.network'), 'error')
+    }
+  }
+
+  const remove = async (u: UserRow) => {
+    if (!(await confirmDialog(t('users.deleteConfirm', { name: u.username }), { danger: true, confirmLabel: t('act.delete') }))) return
+    try {
+      await api.del('/users/' + u.id)
+      toast(t('users.deleted', { name: u.username }), 'success')
+      await load()
+    } catch (e) {
+      toast(e instanceof ApiError ? (e.code === 'last_admin' ? t('users.lastAdmin') : e.message) : t('err.network'), 'error')
+    }
+  }
+
+  if (!users) return <p className="muted">{t('app.loading')}</p>
+  return (
+    <>
+      <div className="card">
+        <p className="muted small">{t('users.hint')}</p>
+        <ul className="plain-list user-list">
+          {users.map((u) => (
+            <li key={u.id} className="row gap wrap">
+              <span className="grow">
+                <strong>{u.username}</strong> {u.current && <span className="tag">{t('users.you')}</span>} {u.isAdmin && <span className="tag ok">{t('users.admin')}</span>}{' '}
+                {u.totpEnabled && <span className="tag">2FA</span>}
+                <span className="muted small block">{t('users.since', { date: new Date(u.createdAt * 1000).toLocaleDateString() })}</span>
+              </span>
+              <label className="check small" title={u.isAdmin && adminCount === 1 ? t('users.lastAdmin') : undefined}>
+                <input type="checkbox" checked={u.isAdmin} disabled={u.isAdmin && adminCount === 1} onChange={(e) => void setAdmin(u, e.target.checked)} /> {t('users.admin')}
+              </label>
+              {!u.current && (
+                <button className="icon-btn small" onClick={() => void remove(u)} title={t('users.delete', { name: u.username })} aria-label={t('users.delete', { name: u.username })}>
+                  <Icon name="trash" size={14} />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <NewUserForm onCreated={load} />
+    </>
+  )
+}
+
+function NewUserForm({ onCreated }: { onCreated: () => Promise<unknown> }) {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      await api.post('/users', { username: username.trim(), password, isAdmin })
+      toast(t('users.created', { name: username.trim() }), 'success')
+      setUsername('')
+      setPassword('')
+      setIsAdmin(false)
+      await onCreated()
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'username_taken') setError(t('users.taken'))
+      else if (err instanceof ApiError && err.code === 'invalid_username') setError(t('users.invalidName'))
+      else if (err instanceof ApiError && err.code === 'weak_password') setError(t('users.weakPassword'))
+      else setError(err instanceof ApiError ? err.message : t('err.network'))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <form className="card form" onSubmit={(e) => void submit(e)}>
+      <h3>{t('users.new')}</h3>
+      <div className="grid2">
+        <label>
+          {t('login.username')}
+          <input value={username} onChange={(e) => setUsername(e.target.value)} required maxLength={64} pattern="[\p{L}\p{N}._@+\-]+" autoComplete="off" spellCheck={false} />
+        </label>
+        <label>
+          {t('login.password')}
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={10} maxLength={1024} autoComplete="new-password" />
+        </label>
+      </div>
+      <label className="setting toggle">
+        <span>{t('users.makeAdmin')}</span>
+        <input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} />
+      </label>
+      <p className="muted small">{t('users.newHint')}</p>
+      {error && <p className="notice error small">{error}</p>}
+      <div className="row end">
+        <button className="btn primary" disabled={busy}>
+          {t('users.create')}
+        </button>
+      </div>
+    </form>
   )
 }
 

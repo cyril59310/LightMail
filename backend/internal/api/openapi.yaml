@@ -495,8 +495,24 @@ paths:
     delete:
       summary: Restore the default logo (administrators)
       responses: { "204": { description: Reset }, "403": { $ref: "#/components/responses/Error" } }
+  /users:
+    get: { summary: "Interface users and their role (administrators)", responses: { "200": { description: OK }, "403": { $ref: "#/components/responses/Error" } } }
+    post:
+      summary: Create a user (administrators)
+      requestBody: { content: { application/json: { schema: { type: object, required: [username, password], properties: { username: { type: string, pattern: "^[\\p{L}\\p{N}._@+-]{1,64}$" }, password: { type: string, minLength: 10 }, isAdmin: { type: boolean } } } } } }
+      responses: { "201": { description: Created }, "400": { $ref: "#/components/responses/Error" }, "403": { $ref: "#/components/responses/Error" }, "409": { description: username_taken } }
+  /users/{id}:
+    patch:
+      summary: Grant or remove the administrator role (administrators; the last administrator keeps it)
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { isAdmin: { type: boolean } } } } } }
+      responses: { "204": { description: Changed }, "403": { $ref: "#/components/responses/Error" }, "404": { $ref: "#/components/responses/Error" }, "409": { $ref: "#/components/responses/Error" } }
+    delete:
+      summary: Delete a user with their mail accounts and local data (administrators; not yourself, not the last administrator)
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "204": { description: Deleted }, "400": { description: self }, "403": { $ref: "#/components/responses/Error" }, "404": { $ref: "#/components/responses/Error" }, "409": { $ref: "#/components/responses/Error" } }
   /status:
-    get: { summary: Runtime, database and account status, responses: { "200": { description: OK } } }
+    get: { summary: Runtime, database and account status (administrators), responses: { "200": { description: OK } } }
   /metrics:
     get:
       summary: Prometheus metrics (session or bearer LIGHTMAIL_METRICS_TOKEN)

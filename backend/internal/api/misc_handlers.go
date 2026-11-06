@@ -64,7 +64,12 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 // metricsHandler serves Prometheus metrics to an authenticated session or a
 // scraper presenting LIGHTMAIL_METRICS_TOKEN as a bearer token.
 func (s *Server) metricsHandler(w http.ResponseWriter, r *http.Request) {
-	ok := userFrom(r) != nil
+	u := userFrom(r)
+	if u != nil && !u.IsAdmin {
+		writeError(w, http.StatusForbidden, "forbidden", "administrator rights required")
+		return
+	}
+	ok := u != nil
 	if !ok && s.Cfg.MetricsToken != "" {
 		got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		ok = subtle.ConstantTimeCompare([]byte(got), []byte(s.Cfg.MetricsToken)) == 1

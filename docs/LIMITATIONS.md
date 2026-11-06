@@ -4,7 +4,7 @@
 
 - **PostgreSQL** : SQLite uniquement. Tout l'accès aux données passe par `internal/store`, mais les requêtes (FTS5, `INDEXED BY`, `json_each`) sont propres à SQLite. Un portage demanderait un second dialecte (`tsvector` pour la recherche). `LIGHTMAIL_DATABASE_URL=postgres://…` est refusé explicitement au démarrage.
 - **OAuth2 Yahoo, Zoho, Fastmail, iCloud** : mot de passe d'application uniquement (voir [CUSTOM_IMAP.md](CUSTOM_IMAP.md) pour les raisons propres à chaque fournisseur).
-- **Gestion multi-utilisateur dans l'interface** : le modèle de données isole les utilisateurs (testé), mais la création se fait en ligne de commande, sans rôles ni administration web.
+- **Gestion multi-utilisateur dans l'interface** : le modèle de données isole les utilisateurs (testé), et les administrateurs créent, suppriment et changent le rôle des utilisateurs dans *Paramètres › Utilisateurs*. Pas d'inscription libre ni de réinitialisation de mot de passe par email.
 - **WebAuthn / clés de sécurité** pour l'interface (la double authentification se fait par TOTP).
 - **Filtres et règles de classement**, étiquettes locales, réponses automatiques.
 - **Vue en conversations dans la liste** : les fils sont détectés (Message-ID, In-Reply-To, References) et affichés dans le lecteur, mais la liste reste par message.

@@ -710,3 +710,125 @@ func TestTwoFactorLoginOverHTTP(t *testing.T) {
 		t.Fatalf("login after disabling: %d", resp.StatusCode)
 	}
 }
+
+func TestAdminOnlyFunctions(t *testing.T) {
+	e := startE2E(t)
+	bob, err := e.app.DB.CreateUser(context.Background(), "bob", mustHash(t), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user := e.client()
+	if resp := user.login("bob", "mallory-password-1"); resp.StatusCode != 200 {
+		t.Fatalf("bob login: %d", resp.StatusCode)
+	}
+	admin := e.client()
+	admin.login("admin", adminPassword)
+
+	png := []byte("\x89PNG\r\n\x1a\n0000")
+	for _, r := range [][2]string{{"GET", "/api/v1/status"}, {"GET", "/api/v1/metrics"}, {"GET", "/api/v1/users"}, {"PATCH", fmt.Sprintf("/api/v1/users/%d", bob.ID)}, {"DELETE", "/api/v1/branding/logo"}} {
+		if resp, _ := user.do(r[0], r[1], map[string]any{"isAdmin": true}); resp.StatusCode != 403 {
+			t.Errorf("regular user: %s %s → %d, want 403", r[0], r[1], resp.StatusCode)
+		}
+	}
+	if resp := user.uploadTo("/api/v1/branding/logo", "logo.png", png); resp.StatusCode != 403 {
+		t.Errorf("regular user changed the logo: %d", resp.StatusCode)
+	}
+	if resp, _ := user.do("GET", "/api/v1/settings", nil); resp.StatusCode != 200 {
+		t.Errorf("regular user lost access to their own settings: %d", resp.StatusCode)
+	}
+
+	resp, b := admin.do("GET", "/api/v1/users", nil)
+	users := decode[struct {
+		Items []struct {
+			ID       int64
+			Username string
+			IsAdmin  bool
+			Current  bool
+		}
+	}](t, b).Items
+	if resp.StatusCode != 200 || len(users) != 2 || users[0].Username != "admin" || !users[0].IsAdmin || !users[0].Current || users[1].IsAdmin {
+		t.Fatalf("list users: %d %s", resp.StatusCode, b)
+	}
+	// The only administrator cannot lose the role.
+	if resp, _ := admin.do("PATCH", fmt.Sprintf("/api/v1/users/%d", users[0].ID), map[string]bool{"isAdmin": false}); resp.StatusCode != 409 {
+		t.Fatalf("demoting the last admin: %d", resp.StatusCode)
+	}
+	if resp, _ := admin.do("PATCH", fmt.Sprintf("/api/v1/users/%d", bob.ID), map[string]bool{"isAdmin": true}); resp.StatusCode != 204 {
+		t.Fatalf("promote bob: %d", resp.StatusCode)
+	}
+	if resp, _ := user.do("GET", "/api/v1/status", nil); resp.StatusCode != 200 {
+		t.Fatalf("promoted user cannot read the status: %d", resp.StatusCode)
+	}
+	// With two administrators, one can step down.
+	if resp, _ := admin.do("PATCH", fmt.Sprintf("/api/v1/users/%d", users[0].ID), map[string]bool{"isAdmin": false}); resp.StatusCode != 204 {
+		t.Fatalf("demote admin: %d", resp.StatusCode)
+	}
+	if resp, _ := admin.do("GET", "/api/v1/status", nil); resp.StatusCode != 403 {
+		t.Fatalf("demoted admin still reads the status: %d", resp.StatusCode)
+	}
+	if resp, _ := admin.do("PATCH", "/api/v1/users/9999", map[string]bool{"isAdmin": true}); resp.StatusCode != 403 {
+		t.Fatalf("demoted admin can still manage users: %d", resp.StatusCode)
+	}
+}
+
+func TestManageUsersOverHTTP(t *testing.T) {
+	e := startE2E(t)
+	admin := e.client()
+	admin.login("admin", adminPassword)
+
+	if resp, _ := admin.do("POST", "/api/v1/users", map[string]any{"username": "carol", "password": "short"}); resp.StatusCode != 400 {
+		t.Fatalf("weak password accepted: %d", resp.StatusCode)
+	}
+	if resp, _ := admin.do("POST", "/api/v1/users", map[string]any{"username": "bad name", "password": "carol-Secret-Pass-1"}); resp.StatusCode != 400 {
+		t.Fatalf("invalid username accepted: %d", resp.StatusCode)
+	}
+	if resp, _ := admin.do("POST", "/api/v1/users", map[string]any{"username": "ADMIN", "password": "carol-Secret-Pass-1"}); resp.StatusCode != 409 {
+		t.Fatalf("duplicate username (case-insensitive) accepted: %d", resp.StatusCode)
+	}
+	resp, b := admin.do("POST", "/api/v1/users", map[string]any{"username": "carol", "password": "carol-Secret-Pass-1", "isAdmin": true})
+	if resp.StatusCode != 201 {
+		t.Fatalf("create user: %d %s", resp.StatusCode, b)
+	}
+	carol := decode[struct {
+		ID      int64
+		IsAdmin bool
+	}](t, b)
+	if !carol.IsAdmin {
+		t.Fatal("isAdmin not applied")
+	}
+	resp, b = admin.do("POST", "/api/v1/users", map[string]any{"username": "dave", "password": "dave-Secret-Pass-1"})
+	dave := decode[struct {
+		ID      int64
+		IsAdmin bool
+	}](t, b)
+	if resp.StatusCode != 201 || dave.IsAdmin {
+		t.Fatalf("create regular user: %d %s", resp.StatusCode, b)
+	}
+
+	d := e.client()
+	if resp := d.login("dave", "dave-Secret-Pass-1"); resp.StatusCode != 200 {
+		t.Fatalf("new user login: %d", resp.StatusCode)
+	}
+	if resp, _ := d.do("POST", "/api/v1/users", map[string]any{"username": "eve", "password": "eve-Secret-Pass-12", "isAdmin": true}); resp.StatusCode != 403 {
+		t.Fatalf("regular user created a user: %d", resp.StatusCode)
+	}
+	if resp, _ := d.do("DELETE", fmt.Sprintf("/api/v1/users/%d", carol.ID), nil); resp.StatusCode != 403 {
+		t.Fatalf("regular user deleted a user: %d", resp.StatusCode)
+	}
+
+	_, b = admin.do("GET", "/api/v1/auth/me", nil)
+	selfID := int64(decode[struct{ User struct{ ID float64 } }](t, b).User.ID)
+	if resp, _ := admin.do("DELETE", fmt.Sprintf("/api/v1/users/%d", selfID), nil); resp.StatusCode != 400 {
+		t.Fatalf("self deletion: %d", resp.StatusCode)
+	}
+	if resp, _ := admin.do("DELETE", fmt.Sprintf("/api/v1/users/%d", dave.ID), nil); resp.StatusCode != 204 {
+		t.Fatalf("delete user: %d", resp.StatusCode)
+	}
+	// The deleted user's session and password stop working.
+	if resp, _ := d.do("GET", "/api/v1/settings", nil); resp.StatusCode != 401 {
+		t.Fatalf("deleted user's session still valid: %d", resp.StatusCode)
+	}
+	if resp := e.client().login("dave", "dave-Secret-Pass-1"); resp.StatusCode != 401 {
+		t.Fatalf("deleted user can sign in: %d", resp.StatusCode)
+	}
+}

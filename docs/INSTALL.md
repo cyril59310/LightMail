@@ -83,11 +83,17 @@ Exemples fournis : [nginx](../deployments/nginx.conf), [Traefik](../deployments/
 La version 1 est conçue pour un usage personnel (un utilisateur, plusieurs comptes mail). Le modèle de données isole déjà chaque utilisateur. On peut ajouter des utilisateurs en ligne de commande :
 
 ```bash
-docker compose exec lightmail lightmail user create alice              # mot de passe lu sur stdin
+docker compose exec lightmail lightmail user create alice              # utilisateur classique, mot de passe lu sur stdin
+docker compose exec lightmail lightmail user create bob --admin        # administrateur
+docker compose exec lightmail lightmail user set-admin alice on        # donner (on) ou retirer (off) le rôle administrateur
+docker compose exec lightmail lightmail user list                      # utilisateurs et rôles
 docker compose exec -T lightmail lightmail user set-password admin <<< 'nouveau-mot-de-passe'
+docker compose exec lightmail lightmail user reset-2fa alice           # désactiver la double authentification
 ```
 
-`set-password` ferme toutes les sessions de l'utilisateur.
+`set-password` et `reset-2fa` ferment toutes les sessions de l'utilisateur.
+
+**Rôles.** Le premier utilisateur est toujours administrateur. Les administrateurs voient l'état du système et les métriques, changent le logo et gèrent les utilisateurs dans *Paramètres › Utilisateurs* : création (avec ou sans rôle administrateur), changement de rôle, suppression. Les utilisateurs classiques ne gèrent que leurs propres comptes mail et paramètres. Il reste toujours au moins un administrateur.
 
 ## Renommer l'application
 

@@ -70,6 +70,8 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	pub := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, h) }
 	priv := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, s.requireAuth(h)) }
+	// Instance-wide functions (system state, branding, user roles).
+	admin := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, s.requireAuth(s.requireAdmin(h))) }
 
 	// Public endpoints
 	pub("GET /api/v1/health", s.health)
@@ -140,9 +142,13 @@ func (s *Server) Handler() http.Handler {
 	priv("GET /api/v1/events", s.eventStream)
 	priv("GET /api/v1/settings", s.getSettings)
 	priv("PUT /api/v1/settings", s.putSettings)
-	priv("POST /api/v1/branding/logo", s.putLogo)
-	priv("DELETE /api/v1/branding/logo", s.deleteLogo)
-	priv("GET /api/v1/status", s.status)
+	admin("POST /api/v1/branding/logo", s.putLogo)
+	admin("DELETE /api/v1/branding/logo", s.deleteLogo)
+	admin("GET /api/v1/users", s.listUsers)
+	admin("POST /api/v1/users", s.createUser)
+	admin("PATCH /api/v1/users/{id}", s.updateUser)
+	admin("DELETE /api/v1/users/{id}", s.deleteUser)
+	admin("GET /api/v1/status", s.status)
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "unknown API endpoint")
@@ -303,6 +309,17 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if userFrom(r) == nil {
 			writeError(w, http.StatusUnauthorized, "unauthenticated", "authentication required")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// requireAdmin restricts a route to administrators.
+func (s *Server) requireAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if u := userFrom(r); u == nil || !u.IsAdmin {
+			writeError(w, http.StatusForbidden, "forbidden", "administrator rights required")
 			return
 		}
 		next.ServeHTTP(w, r)

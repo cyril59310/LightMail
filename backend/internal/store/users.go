@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 )
 
 type User struct {
@@ -39,6 +40,9 @@ func (db *DB) CreateUser(ctx context.Context, username, hash string, admin bool)
 	t := now()
 	res, err := db.W.ExecContext(ctx, `INSERT INTO users(username,password_hash,is_admin,created_at,updated_at) VALUES(?,?,?,?,?)`, username, hash, b2i(admin), t, t)
 	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			return nil, ErrConflict
+		}
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
@@ -259,4 +263,70 @@ func (db *DB) SetRecoveryCodes(ctx context.Context, userID int64, recovery []str
 	rec, _ := json.Marshal(recovery)
 	_, err := db.W.ExecContext(ctx, `UPDATE users SET totp_recovery=?, updated_at=? WHERE id=?`, string(rec), now(), userID)
 	return err
+}
+
+// ListUsers returns every interface user, by name.
+func (db *DB) ListUsers(ctx context.Context) ([]*User, error) {
+	rows, err := db.R.QueryContext(ctx, `SELECT id,username,is_admin,created_at,totp_secret_enc<>'' FROM users ORDER BY username COLLATE NOCASE`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*User
+	for rows.Next() {
+		var u User
+		var admin, totp int
+		if err := rows.Scan(&u.ID, &u.Username, &admin, &u.CreatedAt, &totp); err != nil {
+			return nil, err
+		}
+		u.IsAdmin, u.TOTPEnabled = admin == 1, totp == 1
+		out = append(out, &u)
+	}
+	return out, rows.Err()
+}
+
+// ErrLastAdmin prevents removing the administrator role from the only
+// remaining administrator.
+var ErrLastAdmin = errors.New("at least one administrator is required")
+
+// SetUserAdmin grants or removes the administrator role.
+func (db *DB) SetUserAdmin(ctx context.Context, id int64, admin bool) error {
+	if admin {
+		res, err := db.W.ExecContext(ctx, `UPDATE users SET is_admin=1, updated_at=? WHERE id=?`, now(), id)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return ErrNotFound
+		}
+		return nil
+	}
+	// One statement: the check and the change cannot interleave with another demotion.
+	res, err := db.W.ExecContext(ctx, `UPDATE users SET is_admin=0, updated_at=? WHERE id=? AND (is_admin=0 OR (SELECT COUNT(*) FROM users WHERE is_admin=1 AND id<>?) > 0)`, now(), id, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		if _, err := db.UserByID(ctx, id); err != nil {
+			return err
+		}
+		return ErrLastAdmin
+	}
+	return nil
+}
+
+// DeleteUser removes a user and, by cascade, their mail accounts, cache,
+// drafts, settings and sessions. The last administrator cannot be deleted.
+func (db *DB) DeleteUser(ctx context.Context, id int64) error {
+	res, err := db.W.ExecContext(ctx, `DELETE FROM users WHERE id=? AND (is_admin=0 OR (SELECT COUNT(*) FROM users WHERE is_admin=1 AND id<>?) > 0)`, id, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		if _, err := db.UserByID(ctx, id); err != nil {
+			return err
+		}
+		return ErrLastAdmin
+	}
+	return nil
 }

@@ -88,10 +88,6 @@ func (s *Server) getLogo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) putLogo(w http.ResponseWriter, r *http.Request) {
-	if !userFrom(r).IsAdmin {
-		writeError(w, http.StatusForbidden, "forbidden", "only an administrator can change the logo")
-		return
-	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxLogoBytes+64<<10)
 	file, _, err := r.FormFile("file")
 	if err != nil {
@@ -134,10 +130,6 @@ func (s *Server) putLogo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteLogo(w http.ResponseWriter, r *http.Request) {
-	if !userFrom(r).IsAdmin {
-		writeError(w, http.StatusForbidden, "forbidden", "only an administrator can change the logo")
-		return
-	}
 	if err := s.DB.SetMeta(r.Context(), logoMetaKey, "{}"); err != nil {
 		s.fail(w, r, err)
 		return

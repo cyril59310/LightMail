@@ -41,9 +41,14 @@ Commands:
   serve                     Run the server (default)
   healthcheck               Exit 0 if the local server is healthy (Docker HEALTHCHECK)
   gen-key                   Print a new random master encryption key
-  user create <name>        Create a user (password read from stdin)
+  user create <name> [--admin]
+                            Create a user (password read from stdin); the first
+                            user is always an administrator
   user set-password <name>  Change a user password (password read from stdin)
   user reset-2fa <name>     Disable two-factor authentication of a user
+  user set-admin <name> on|off
+                            Grant or remove the administrator role
+  user list                 List users and their role
   backup [-out FILE] [-with-cache]
                             Write a consistent backup archive (server may be running)
   verify-backup FILE        Check archive checksums, database integrity and key
@@ -209,39 +214,37 @@ func openDB(cfg *config.Config) (*store.DB, error) {
 	return store.Open(context.Background(), cfg.DBPath, 1)
 }
 
+const userUsage = "usage: lightmail user create <username> [--admin] | set-password <username> | set-admin <username> on|off | reset-2fa <username> | list"
+
 func userCmd(args []string) error {
-	if len(args) != 2 || (args[0] != "create" && args[0] != "set-password" && args[0] != "reset-2fa") {
-		return errors.New("usage: lightmail user create|set-password|reset-2fa <username>")
+	if len(args) == 0 {
+		return errors.New(userUsage)
+	}
+	sub, rest := args[0], args[1:]
+	makeAdmin := false
+	if sub == "create" && len(rest) == 2 && (rest[1] == "--admin" || rest[1] == "-admin") {
+		makeAdmin, rest = true, rest[:1]
+	}
+	switch {
+	case sub == "list" && len(rest) == 0:
+	case sub == "set-admin" && len(rest) == 2 && (rest[1] == "on" || rest[1] == "off"):
+	case (sub == "create" || sub == "set-password" || sub == "reset-2fa") && len(rest) == 1:
+	default:
+		return errors.New(userUsage)
 	}
 	cfg, _, err := loadConfig()
 	if err != nil {
 		return err
 	}
-	if args[0] == "reset-2fa" {
-		db, err := openDB(cfg)
+	var hash string
+	if sub == "create" || sub == "set-password" {
+		pw, err := readPassword()
 		if err != nil {
 			return err
 		}
-		defer db.Close()
-		ctx := context.Background()
-		u, err := db.UserByName(ctx, args[1])
-		if err != nil {
-			return fmt.Errorf("user %q: %w", args[1], err)
-		}
-		if err := db.DisableTOTP(ctx, u.ID); err != nil {
+		if hash, err = auth.HashPassword(pw); err != nil {
 			return err
 		}
-		_ = db.DeleteUserSessions(ctx, u.ID, "")
-		fmt.Println("two-factor authentication disabled, all sessions revoked:", u.Username)
-		return nil
-	}
-	pw, err := readPassword()
-	if err != nil {
-		return err
-	}
-	hash, err := auth.HashPassword(pw)
-	if err != nil {
-		return err
 	}
 	db, err := openDB(cfg)
 	if err != nil {
@@ -249,22 +252,63 @@ func userCmd(args []string) error {
 	}
 	defer db.Close()
 	ctx := context.Background()
-	if args[0] == "create" {
-		if _, err := db.CreateUser(ctx, args[1], hash, true); err != nil {
+
+	switch sub {
+	case "list":
+		users, err := db.ListUsers(ctx)
+		if err != nil {
 			return err
 		}
-		fmt.Println("user created:", args[1])
+		for _, u := range users {
+			role, tfa := "user", ""
+			if u.IsAdmin {
+				role = "admin"
+			}
+			if u.TOTPEnabled {
+				tfa = "  2fa"
+			}
+			fmt.Printf("%-30s %-5s%s\n", u.Username, role, tfa)
+		}
+		return nil
+	case "create":
+		// The very first user administers the instance.
+		if n, err := db.CountUsers(ctx); err == nil && n == 0 {
+			makeAdmin = true
+		}
+		if _, err := db.CreateUser(ctx, rest[0], hash, makeAdmin); err != nil {
+			return err
+		}
+		role := "user"
+		if makeAdmin {
+			role = "administrator"
+		}
+		fmt.Printf("user created: %s (%s)\n", rest[0], role)
 		return nil
 	}
-	u, err := db.UserByName(ctx, args[1])
+
+	u, err := db.UserByName(ctx, rest[0])
 	if err != nil {
-		return fmt.Errorf("user %q: %w", args[1], err)
+		return fmt.Errorf("user %q: %w", rest[0], err)
 	}
-	if err := db.SetUserPassword(ctx, u.ID, hash); err != nil {
-		return err
+	switch sub {
+	case "set-admin":
+		if err := db.SetUserAdmin(ctx, u.ID, rest[1] == "on"); err != nil {
+			return err
+		}
+		fmt.Printf("%s is now %s\n", u.Username, map[bool]string{true: "an administrator", false: "a regular user"}[rest[1] == "on"])
+	case "reset-2fa":
+		if err := db.DisableTOTP(ctx, u.ID); err != nil {
+			return err
+		}
+		_ = db.DeleteUserSessions(ctx, u.ID, "")
+		fmt.Println("two-factor authentication disabled, all sessions revoked:", u.Username)
+	case "set-password":
+		if err := db.SetUserPassword(ctx, u.ID, hash); err != nil {
+			return err
+		}
+		_ = db.DeleteUserSessions(ctx, u.ID, "")
+		fmt.Println("password changed, all sessions revoked")
 	}
-	_ = db.DeleteUserSessions(ctx, u.ID, "")
-	fmt.Println("password changed, all sessions revoked")
 	return nil
 }
 
