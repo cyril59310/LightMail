@@ -3,6 +3,8 @@
 #
 #   1. cp .env.example .env            (edit LIGHTMAIL_PUBLIC_URL, LIGHTMAIL_ADMIN_PASSWORD…)
 #   2. mkdir -p secrets && docker run --rm ghcr.io/cyril59310/lightmail gen-key > secrets/master_key
+#      sudo chown 65532:65532 secrets/master_key && sudo chmod 600 secrets/master_key
+#      (the container runs as uid 65532 and needs to read the key)
 #   3. docker compose up -d
 #
 # Pin a version with LIGHTMAIL_VERSION=x.y.z in .env (default: latest).
@@ -29,7 +31,7 @@ services:
     secrets:
       - lightmail_master_key
     ports:
-      - "127.0.0.1:${LIGHTMAIL_HOST_PORT:-8080}:8080"
+      - "{LIGHTMAIL_HOST_PORT:-8080}:8080"
     volumes:
       - lightmail-data:/data
     # Hardening: read-only root FS, no capabilities, no privilege escalation.

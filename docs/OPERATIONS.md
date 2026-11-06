@@ -50,6 +50,7 @@ docker run --rm -it -v lightmail_lightmail-data:/data:ro alpine sh
 |---|---|
 | Le conteneur redémarre en boucle avec `MASTER_KEY does not match this database` | Mauvaise clé montée : restaurez la bonne `secrets/master_key`, ou ajoutez l'ancienne dans `LIGHTMAIL_MASTER_KEY_OLD` |
 | `LIGHTMAIL_MASTER_KEY ... is required` | Fichier `secrets/master_key` absent (`make secrets`) |
+| `LIGHTMAIL_MASTER_KEY_FILE: open /run/secrets/lightmail_master_key: permission denied` | La clé n'est pas lisible par l'utilisateur du conteneur (`65532`) : `sudo chown 65532:65532 secrets/master_key && sudo chmod 600 secrets/master_key`, puis `docker compose up -d` |
 | Connexion refusée en 403 `bad_origin` | `LIGHTMAIL_PUBLIC_URL` ne correspond pas à l'URL utilisée dans le navigateur (schéma, domaine, port) |
 | Cookie de session perdu en HTTP | En HTTPS, le cookie est `Secure`. Pour un test en HTTP, `PUBLIC_URL` doit être en `http://` (ou `LIGHTMAIL_COOKIE_SECURE=false`) |
 | Nouveaux messages lents à apparaître | Vérifiez que le reverse proxy ne bufferise pas `/api/v1/events`, et `lightmail_imap_idle_connections` |

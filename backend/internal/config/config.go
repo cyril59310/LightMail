@@ -255,6 +255,12 @@ func (e *env) str(name, def string) string {
 func (e *env) secret(name string) (string, error) {
 	if path := strings.TrimSpace(e.getenv(Prefix + name + "_FILE")); path != "" {
 		b, err := os.ReadFile(path)
+		if errors.Is(err, os.ErrPermission) {
+			// Compose file secrets are bind mounts that keep the host owner and
+			// mode, and the container runs as an unprivileged user.
+			return "", fmt.Errorf("%s%s_FILE: %w: the file must be readable by uid %d, the container user (on the host: sudo chown %d:%d <file> && sudo chmod 600 <file>)",
+				Prefix, name, err, os.Getuid(), os.Getuid(), os.Getgid())
+		}
 		if err != nil {
 			return "", fmt.Errorf("%s%s_FILE: %w", Prefix, name, err)
 		}

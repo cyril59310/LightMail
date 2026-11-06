@@ -63,7 +63,7 @@ OLD=$(cat secrets/master_key)
 docker compose stop lightmail
 docker compose run --rm --no-deps -e LIGHTMAIL_MASTER_KEY_FILE= \
   -e LIGHTMAIL_MASTER_KEY="$NEW" -e LIGHTMAIL_MASTER_KEY_OLD="$OLD" lightmail rotate-key
-echo "$NEW" > secrets/master_key
+echo "$NEW" | sudo tee secrets/master_key >/dev/null   # garde le propriétaire 65532
 docker compose up -d
 ```
 

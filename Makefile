@@ -42,7 +42,10 @@ release: ## Publish a GitHub release (BUMP=patch|minor|major|X.Y.Z, default: cur
 secrets: ## Generate the master encryption key (once!)
 	@mkdir -p secrets
 	@if [ -f secrets/master_key ]; then echo "secrets/master_key already exists: not overwriting"; exit 1; fi
-	@docker run --rm $(PUBLISHED_IMAGE):latest gen-key > secrets/master_key && chmod 600 secrets/master_key
+	@docker run --rm $(PUBLISHED_IMAGE):latest gen-key > secrets/master_key
+	@# The container runs as uid 65532 and Compose mounts the file with its host owner.
+	@chown 65532:65532 secrets/master_key 2>/dev/null || sudo chown 65532:65532 secrets/master_key
+	@chmod 600 secrets/master_key 2>/dev/null || sudo chmod 600 secrets/master_key
 	@echo "secrets/master_key created. Back it up somewhere safe: without it, stored credentials are lost."
 
 up: ## Start with the published image

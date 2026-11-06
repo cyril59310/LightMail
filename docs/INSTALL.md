@@ -45,10 +45,13 @@ Toutes les variables sont commentées dans [`.env.example`](../.env.example). Ch
 ## 3. Générer la clé de chiffrement
 
 ```bash
-docker run --rm ghcr.io/cyril59310/lightmail gen-key > secrets/master_key && chmod 600 secrets/master_key
+docker run --rm ghcr.io/cyril59310/lightmail gen-key > secrets/master_key
+sudo chown 65532:65532 secrets/master_key && sudo chmod 600 secrets/master_key   # lisible par le conteneur seul
 ```
 
 (Depuis un clone du dépôt : `make secrets`, qui refuse d'écraser une clé existante.)
+
+Le conteneur s'exécute avec l'utilisateur non privilégié `65532`, et Docker Compose monte le fichier tel quel, avec son propriétaire et ses droits de l'hôte : la clé doit donc **appartenir à `65532`** (`chmod 600` seul la rend illisible pour le conteneur, `permission denied` au démarrage). Avec Docker en mode *rootless* ou Podman, l'UID vu par le conteneur est décalé : utilisez `podman unshare chown 65532:65532 secrets/master_key` (ou l'équivalent `rootlesskit`).
 
 La clé (32 octets aléatoires) chiffre les mots de passe IMAP/SMTP et les jetons OAuth2. Elle est montée en secret Docker (`/run/secrets/lightmail_master_key`) et **n'est jamais incluse dans les sauvegardes**. Conservez-en une copie hors du serveur (gestionnaire de mots de passe). LightMail refuse de démarrer sans clé, ou avec une clé qui ne correspond pas à la base.
 
