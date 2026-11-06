@@ -158,7 +158,7 @@ function AccountOrganizer() {
   const removeGroup = async (id: string, groupName: string) => {
     if (!(await confirmDialog(t('acct.categoryDeleteConfirm', { name: groupName }), { danger: true, confirmLabel: t('act.delete') }))) return
     const g = layout.groups.find((x) => x.id === id)!
-    void saveAccountLayout({ ungrouped: [...layout.ungrouped, ...g.accounts], groups: layout.groups.filter((x) => x.id !== id) })
+    void saveAccountLayout({ ...layout, ungrouped: [...layout.ungrouped, ...g.accounts], groups: layout.groups.filter((x) => x.id !== id) })
   }
 
   const renderList = (groupId: string | null, ids: number[]) => {

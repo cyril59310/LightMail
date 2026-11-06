@@ -118,7 +118,9 @@ export function accountLayout(raw: string | undefined, accounts: Account[]): Acc
   const take = (ids: unknown) => (Array.isArray(ids) ? ids.filter((id: number) => left.delete(id)) : [])
   const ungrouped = take(stored?.ungrouped)
   const groups = (Array.isArray(stored?.groups) ? stored.groups : []).map((g) => ({ ...g, accounts: take(g.accounts) }))
-  return { ungrouped: [...ungrouped, ...accounts.filter((a) => left.has(a.id)).map((a) => a.id)], groups }
+  const ids = new Set(accounts.map((a) => a.id))
+  const collapsedAccounts = Array.isArray(stored?.collapsedAccounts) ? stored.collapsedAccounts.filter((id) => ids.has(id)) : []
+  return { ungrouped: [...ungrouped, ...accounts.filter((a) => left.has(a.id)).map((a) => a.id)], groups, ...(collapsedAccounts.length ? { collapsedAccounts } : {}) }
 }
 
 /** Accounts in display order, ignoring the categories. */
@@ -137,7 +139,7 @@ export function moveAccount(layout: AccountLayout, id: number, groupId: string |
     }
     return next
   }
-  return { ungrouped: place(layout.ungrouped, null), groups: layout.groups.map((g) => ({ ...g, accounts: place(g.accounts, g.id) })) }
+  return { ...layout, ungrouped: place(layout.ungrouped, null), groups: layout.groups.map((g) => ({ ...g, accounts: place(g.accounts, g.id) })) }
 }
 
 /** Reads the serverPresets setting; an unreadable value means no preset. */

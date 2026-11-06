@@ -247,10 +247,10 @@ func TestLoginSessionAndCSRF(t *testing.T) {
 	if resp, _ := c.do("PUT", "/api/v1/settings", map[string]string{"unknownKey": "1"}); resp.StatusCode != 400 {
 		t.Fatal("unknown setting accepted")
 	}
-	if resp, _ := c.do("PUT", "/api/v1/settings", map[string]string{"accountLayout": `{"ungrouped":[2],"groups":[{"id":"g1","name":"Travail","accounts":[1],"collapsed":true}]}`}); resp.StatusCode != 200 {
+	if resp, _ := c.do("PUT", "/api/v1/settings", map[string]string{"accountLayout": `{"ungrouped":[2],"groups":[{"id":"g1","name":"Travail","accounts":[1],"collapsed":true}],"collapsedAccounts":[2]}`}); resp.StatusCode != 200 {
 		t.Fatalf("valid account layout refused: %d", resp.StatusCode)
 	}
-	for _, bad := range []string{`null`, `[]`, `{"groups":[{"id":"g1","name":"  ","accounts":[]}]}`, `{"groups":[{"id":"a b","name":"x"}]}`, `{"groups":[{"id":"g","name":"x"},{"id":"g","name":"y"}]}`, `{"ungrouped":"x"}`, `{"groups":[{"id":"g","name":"x","collapsed":"yes"}]}`} {
+	for _, bad := range []string{`null`, `[]`, `{"groups":[{"id":"g1","name":"  ","accounts":[]}]}`, `{"groups":[{"id":"a b","name":"x"}]}`, `{"groups":[{"id":"g","name":"x"},{"id":"g","name":"y"}]}`, `{"ungrouped":"x"}`, `{"groups":[{"id":"g","name":"x","collapsed":"yes"}]}`, `{"collapsedAccounts":["1"]}`} {
 		if resp, _ := c.do("PUT", "/api/v1/settings", map[string]string{"accountLayout": bad}); resp.StatusCode != 400 {
 			t.Fatalf("invalid account layout accepted: %s", bad)
 		}

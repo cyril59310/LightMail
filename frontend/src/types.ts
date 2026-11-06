@@ -49,6 +49,8 @@ export interface AccountGroup {
 export interface AccountLayout {
   ungrouped: number[]
   groups: AccountGroup[]
+  /** Accounts whose folder list is folded in the sidebar. */
+  collapsedAccounts?: number[]
 }
 
 /** Saved IMAP/SMTP configuration, reused when adding an account (no credentials). */

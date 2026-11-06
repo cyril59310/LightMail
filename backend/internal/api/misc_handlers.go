@@ -227,8 +227,9 @@ func validAccountLayout(v string) bool {
 			Accounts  []int64 `json:"accounts"`
 			Collapsed bool    `json:"collapsed"`
 		} `json:"groups"`
+		CollapsedAccounts []int64 `json:"collapsedAccounts"`
 	}
-	if !strings.HasPrefix(v, "{") || json.Unmarshal([]byte(v), &l) != nil || len(l.Groups) > 50 {
+	if !strings.HasPrefix(v, "{") || json.Unmarshal([]byte(v), &l) != nil || len(l.Groups) > 50 || len(l.CollapsedAccounts) > 500 {
 		return false
 	}
 	seen := make(map[string]bool, len(l.Groups))

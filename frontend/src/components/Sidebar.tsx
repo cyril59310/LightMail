@@ -33,7 +33,6 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
   const counters = useStore((s) => s.counters)
   const outbox = useStore((s) => s.outbox)
   const me = useStore((s) => s.me)
-  const [collapsed, setCollapsed] = useState<Record<number, boolean>>({})
   const [newFolder, setNewFolder] = useState<{ account: Account; parentId?: number } | null>(null)
   const cur = route.path.join('/')
   const pendingOut = outbox.filter((o) => o.status !== 'sent' && o.status !== 'canceled').length
@@ -59,15 +58,20 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
   const layout = useMemo(() => accountLayout(rawLayout, accounts), [rawLayout, accounts])
   const byId = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts])
 
+  const toggleAccount = (id: number, fold: boolean) => {
+    const rest = (layout.collapsedAccounts ?? []).filter((x) => x !== id)
+    return saveAccountLayout({ ...layout, collapsedAccounts: fold ? [...rest, id] : rest })
+  }
+
   const renderAccount = (id: number) => {
     const a: Account = byId.get(id)!
     const list = byAccount.get(a.id) ?? []
-    const open = !collapsed[a.id]
+    const open = !layout.collapsedAccounts?.includes(a.id)
     const problem = a.status === 'error' || a.status === 'auth_error'
     return (
       <div key={a.id} className="nav-account">
         <div className="nav-account-row">
-          <button className="nav-account-head" onClick={() => setCollapsed((c) => ({ ...c, [a.id]: open }))} aria-expanded={open} title={a.email}>
+          <button className="nav-account-head" onClick={() => void toggleAccount(a.id, open)} aria-expanded={open} title={a.email}>
             <span className="dot" style={{ background: accountColor(a) }} />
             <span className="nav-label">{accountLabel(a)}</span>
             {problem && <Icon name="alert" className="warn" size={15} title={a.lastError || t(('acct.status.' + a.status) as never)} />}
