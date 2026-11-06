@@ -38,7 +38,7 @@ Exemple de tâche planifiée sur l'hôte (cron, tous les jours à 3 h) :
 30 3 * * * find /var/lib/docker/volumes/lightmail_lightmail-data/_data/backups -name '*.tar.gz' -mtime +14 -delete
 ```
 
-L'image n'a pas de shell : la purge des anciennes archives se fait depuis l'hôte, directement sur le volume. Le chemin dépend du nom du projet Compose (`docker volume inspect lightmail_lightmail-data`).
+L'image n'a pas de shell : la purge des anciennes archives se fait depuis l'hôte, directement sur le volume. Le chemin dépend du nom du projet Compose (`docker volume inspect lightmail_lightmail-data`) ; avec un dossier de l'hôte monté sur `/data`, utilisez `<dossier>/backups`.
 
 ## Vérifier une sauvegarde
 

@@ -34,6 +34,9 @@ services:
       - "${LIGHTMAIL_HOST_PORT:-8080}:8080"
     volumes:
       - lightmail-data:/data
+      # Or a host directory, which must belong to the container user (uid 65532):
+      #   sudo mkdir -p /home/docker/lightmail && sudo chown -R 65532:65532 /home/docker/lightmail
+      # - /home/docker/lightmail:/data
     # Hardening: read-only root FS, no capabilities, no privilege escalation.
     read_only: true
     tmpfs:

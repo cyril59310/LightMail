@@ -65,6 +65,18 @@ docker compose logs -f lightmail
 
 Le service écoute uniquement sur `127.0.0.1:8080` : il n'est pas exposé directement sur Internet.
 
+### Données dans un dossier de l'hôte (au lieu du volume)
+
+Par défaut, les données (base, cache, sauvegardes) sont dans le volume nommé `lightmail-data`, que Docker crée avec le bon propriétaire. Pour les placer dans un dossier de l'hôte, par exemple `/home/docker/lightmail`, ce dossier doit **appartenir à l'utilisateur du conteneur (`65532`)**, sinon le démarrage échoue avec `open /data/.lock: permission denied` :
+
+```bash
+sudo mkdir -p /home/docker/lightmail
+sudo chown -R 65532:65532 /home/docker/lightmail
+sudo chmod 700 /home/docker/lightmail
+```
+
+puis, dans `docker-compose.yml`, remplacez `lightmail-data:/data` par `/home/docker/lightmail:/data`. Pour reprendre des données existantes du volume : `docker compose down`, copiez le contenu de `/var/lib/docker/volumes/lightmail_lightmail-data/_data/` dans le dossier (`sudo cp -a`), refaites le `chown -R`, puis `docker compose up -d`.
+
 ## 5. HTTPS (reverse proxy)
 
 ### Option A : Caddy fourni (le plus simple)

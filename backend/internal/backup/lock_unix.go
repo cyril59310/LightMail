@@ -4,6 +4,7 @@ package backup
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -14,6 +15,12 @@ import (
 // server is running, and two servers cannot share a data directory.
 func LockDataDir(dir string) (func(), error) {
 	f, err := os.OpenFile(filepath.Join(dir, ".lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if errors.Is(err, os.ErrPermission) {
+		// Typical with a bind-mounted host directory: unlike a named volume,
+		// it keeps its host owner, and the container runs unprivileged.
+		return nil, fmt.Errorf("%w: the data directory %s must be writable by uid %d, the user LightMail runs as (for a host directory: sudo chown -R %d:%d <directory>)",
+			err, dir, os.Getuid(), os.Getuid(), os.Getgid())
+	}
 	if err != nil {
 		return nil, err
 	}
