@@ -405,6 +405,21 @@ input[type='checkbox'] {
   display: inline-block;
   position: relative;
 }
+.brand-logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  object-fit: contain;
+  flex: none;
+}
+.brand.big .brand-logo {
+  width: auto;
+  height: 40px;
+  max-width: 160px;
+}
+.logo-setting {
+  align-items: center;
+}
 .brand-mark::after {
   content: '';
   position: absolute;

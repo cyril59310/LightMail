@@ -460,6 +460,18 @@ paths:
       description: 'accountLayout is a JSON string giving the account order and categories: {"ungrouped":[1],"groups":[{"id":"g1","name":"Work","accounts":[2],"collapsed":false}]}. serverPresets is a JSON string listing saved IMAP/SMTP configurations, without credentials: [{"id":"s1","name":"My host","imap":{…},"smtp":{…},"tlsCaPem":""}]'
       requestBody: { content: { application/json: { schema: { type: object, additionalProperties: { type: string } } } } }
       responses: { "200": { description: OK }, "400": { $ref: "#/components/responses/Error" } }
+  /branding/logo:
+    get:
+      summary: Custom instance logo (public; 404 when the default logo is used)
+      security: []
+      responses: { "200": { description: The image }, "404": { description: No custom logo } }
+    post:
+      summary: Replace the logo (administrators; multipart field "file"; PNG, JPEG, GIF, WebP, ICO or SVG, 512 KB max)
+      requestBody: { content: { multipart/form-data: { schema: { type: object, properties: { file: { type: string, format: binary } } } } } }
+      responses: { "200": { description: "{logoVersion}" }, "403": { $ref: "#/components/responses/Error" }, "413": { $ref: "#/components/responses/Error" }, "415": { $ref: "#/components/responses/Error" } }
+    delete:
+      summary: Restore the default logo (administrators)
+      responses: { "204": { description: Reset }, "403": { $ref: "#/components/responses/Error" } }
   /status:
     get: { summary: Runtime, database and account status, responses: { "200": { description: OK } } }
   /metrics:

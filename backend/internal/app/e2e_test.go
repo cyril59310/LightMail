@@ -174,7 +174,7 @@ func TestAllPrivateRoutesRequireAuth(t *testing.T) {
 		{"GET", "/api/v1/messages/1/raw"}, {"GET", "/api/v1/messages/1/attachments/1"}, {"POST", "/api/v1/messages/actions"},
 		{"POST", "/api/v1/messages/send"}, {"GET", "/api/v1/search?q=x"}, {"POST", "/api/v1/uploads"}, {"GET", "/api/v1/drafts"},
 		{"POST", "/api/v1/drafts"}, {"GET", "/api/v1/outbox"}, {"GET", "/api/v1/notifications"}, {"GET", "/api/v1/events"},
-		{"GET", "/api/v1/settings"}, {"PUT", "/api/v1/settings"}, {"GET", "/api/v1/status"}, {"GET", "/api/v1/metrics"},
+		{"GET", "/api/v1/settings"}, {"PUT", "/api/v1/settings"}, {"POST", "/api/v1/branding/logo"}, {"DELETE", "/api/v1/branding/logo"}, {"GET", "/api/v1/status"}, {"GET", "/api/v1/metrics"},
 		{"POST", "/api/v1/oauth/google/start"}, {"GET", "/api/v1/oauth/google/callback?code=x&state=y"},
 		{"POST", "/api/v1/auth/logout-all"}, {"POST", "/api/v1/auth/password"}, {"GET", "/api/v1/counters"}, {"GET", "/api/v1/contacts?q=ab"},
 	}
@@ -503,12 +503,16 @@ func mustHash(t *testing.T) string {
 func mustURL(s string) *url.URL { u, _ := url.Parse(s); return u }
 
 func (c *client) uploadRaw(name string, data []byte) *http.Response {
+	return c.uploadTo("/api/v1/uploads", name, data)
+}
+
+func (c *client) uploadTo(path, name string, data []byte) *http.Response {
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 	fw, _ := mw.CreateFormFile("file", name)
 	fw.Write(data)
 	mw.Close()
-	req, _ := http.NewRequest("POST", c.e.srv.URL+"/api/v1/uploads", &buf)
+	req, _ := http.NewRequest("POST", c.e.srv.URL+path, &buf)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	req.Header.Set("X-CSRF-Token", c.csrf)
 	req.Header.Set("Origin", c.e.srv.URL)
@@ -591,5 +595,56 @@ func TestCreateAndDeleteFolders(t *testing.T) {
 		if f.ID == child.ID {
 			t.Fatal("deleted folder still listed")
 		}
+	}
+}
+
+func TestCustomLogo(t *testing.T) {
+	e := startE2E(t)
+	c := e.client()
+	if resp, _ := c.do("GET", "/api/v1/branding/logo", nil); resp.StatusCode != 404 {
+		t.Fatalf("default logo: status %d, want 404", resp.StatusCode)
+	}
+	c.login("admin", adminPassword)
+
+	logoVersion := func() any {
+		_, b := c.do("GET", "/api/v1/auth/me", nil)
+		return decode[map[string]any](t, b)["logoVersion"]
+	}
+	if v := logoVersion(); v != nil {
+		t.Fatalf("logoVersion without a logo: %v", v)
+	}
+
+	if resp := c.uploadTo("/api/v1/branding/logo", "logo.txt", []byte("not an image")); resp.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("non-image accepted: %d", resp.StatusCode)
+	}
+	if resp := c.uploadTo("/api/v1/branding/logo", "big.png", append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 600<<10)...)); resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized logo: %d", resp.StatusCode)
+	}
+
+	svg := []byte(`<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><script>alert(1)</script><rect width="10" height="10"/></svg>`)
+	if resp := c.uploadTo("/api/v1/branding/logo", "logo.svg", svg); resp.StatusCode != 200 {
+		t.Fatalf("upload logo: %d", resp.StatusCode)
+	}
+	if logoVersion() == nil {
+		t.Fatal("logoVersion missing after upload")
+	}
+	// Public, served with its type and a sandboxing CSP.
+	anon := e.client()
+	resp, body := anon.do("GET", "/api/v1/branding/logo", nil)
+	if resp.StatusCode != 200 || !bytes.Equal(body, svg) || resp.Header.Get("Content-Type") != "image/svg+xml" {
+		t.Fatalf("get logo: %d %q", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+	if csp := resp.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "sandbox") || !strings.Contains(csp, "default-src 'none'") {
+		t.Fatalf("logo CSP: %q", csp)
+	}
+	if resp, _ := anon.do("GET", "/api/v1/branding/logo", nil, "If-None-Match", resp.Header.Get("ETag")); resp.StatusCode != http.StatusNotModified {
+		t.Fatalf("conditional request: %d", resp.StatusCode)
+	}
+
+	if resp, _ := c.do("DELETE", "/api/v1/branding/logo", nil); resp.StatusCode != 204 {
+		t.Fatalf("reset logo: %d", resp.StatusCode)
+	}
+	if resp, _ := anon.do("GET", "/api/v1/branding/logo", nil); resp.StatusCode != 404 || logoVersion() != nil {
+		t.Fatalf("logo still served after reset: %d", resp.StatusCode)
 	}
 }

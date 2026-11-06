@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { ApiError, api, setCsrfToken } from '../api'
 import { t } from '../i18n'
 import type { Me } from '../types'
+import { BrandMark } from './Icons'
 
 export function Login({ me, onLogin }: { me: Me; onLogin: () => void }) {
   const [username, setUsername] = useState('')
@@ -31,7 +32,7 @@ export function Login({ me, onLogin }: { me: Me; onLogin: () => void }) {
     <div className="login-page">
       <form className="login-card" onSubmit={submit}>
         <div className="brand big">
-          <span className="brand-mark" aria-hidden="true" />
+          <BrandMark logoVersion={me.logoVersion} />
           {me.appName}
         </div>
         <h1>{t('login.title')}</h1>

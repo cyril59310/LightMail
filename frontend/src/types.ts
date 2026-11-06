@@ -198,6 +198,8 @@ export interface Me {
   authenticated: boolean
   appName: string
   version: string
+  /** Set when an administrator uploaded a custom logo. */
+  logoVersion?: number
   setupRequired?: boolean
   user?: { id: number; username: string; isAdmin: boolean }
   csrfToken?: string

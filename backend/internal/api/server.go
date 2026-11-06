@@ -75,6 +75,7 @@ func (s *Server) Handler() http.Handler {
 	pub("GET /api/v1/health", s.health)
 	pub("POST /api/v1/auth/login", s.login)
 	pub("GET /api/v1/auth/me", s.me)
+	pub("GET /api/v1/branding/logo", s.getLogo)
 	pub("GET /api/v1/openapi.yaml", s.openapi)
 	pub("GET /api/v1/metrics", s.metricsHandler) // session or bearer token, checked inside
 
@@ -134,6 +135,8 @@ func (s *Server) Handler() http.Handler {
 	priv("GET /api/v1/events", s.eventStream)
 	priv("GET /api/v1/settings", s.getSettings)
 	priv("PUT /api/v1/settings", s.putSettings)
+	priv("POST /api/v1/branding/logo", s.putLogo)
+	priv("DELETE /api/v1/branding/logo", s.deleteLogo)
 	priv("GET /api/v1/status", s.status)
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {

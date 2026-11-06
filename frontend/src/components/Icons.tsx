@@ -75,3 +75,9 @@ export function Icon({ name, size = 18, className, title, filled }: { name: Icon
     </svg>
   )
 }
+
+/** Instance logo: the uploaded image, or the default brand mark. */
+export function BrandMark({ logoVersion }: { logoVersion?: number }) {
+  if (logoVersion) return <img className="brand-logo" src={'/api/v1/branding/logo?v=' + logoVersion} alt="" aria-hidden="true" />
+  return <span className="brand-mark" aria-hidden="true" />
+}

@@ -6,7 +6,7 @@ import { openCompose, saveAccountLayout, useStore } from '../store'
 import type { Account, Folder } from '../types'
 import { accountColor, accountLabel, accountLayout, folderDepth, folderLabel } from '../util'
 import { deleteFolder, NewFolderDialog } from './FolderDialog'
-import { Icon } from './Icons'
+import { BrandMark, Icon } from './Icons'
 
 const roleIcon: Record<string, string> = {
   inbox: 'inbox', sent: 'send', drafts: 'file', archive: 'archive', trash: 'trash', junk: 'spam', all: 'mail', flagged: 'star', important: 'alert',
@@ -119,7 +119,7 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
   return (
     <nav className="sidebar" aria-label="Navigation">
       <div className="brand">
-        <span className="brand-mark" aria-hidden="true" />
+        <BrandMark logoVersion={me?.logoVersion} />
         {me?.appName}
       </div>
       <button

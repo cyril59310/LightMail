@@ -1,15 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ApiError, api } from '../api'
 import { setLanguage, t } from '../i18n'
 import { href, navigate, useRoute } from '../router'
-import { getState, loadAccounts, loadFolders, saveAccountLayout, saveSettings, toast, useStore } from '../store'
+import { getState, setState, loadAccounts, loadFolders, saveAccountLayout, saveSettings, toast, useStore } from '../store'
 import type { Account } from '../types'
 import { accountColor, accountLabel, accountLayout, folderLabel, formatSize, moveAccount, orderedAccounts, relativeTime } from '../util'
 import { EndpointFields, startOAuth } from './AccountWizard'
 import { confirmDialog } from './Dialogs'
 import { deleteFolder, NewFolderDialog } from './FolderDialog'
 import { RichEditor } from './Editor'
-import { Icon } from './Icons'
+import { BrandMark, Icon } from './Icons'
 
 const tabs = ['general', 'accounts', 'notifications', 'security', 'about'] as const
 
@@ -84,6 +84,7 @@ function Toggle({ k, label, hint }: { k: string; label: string; hint?: string })
 function General() {
   const accounts = useStore((s) => s.accounts)
   const settings = useStore((s) => s.settings)
+  const isAdmin = useStore((s) => !!s.me?.user?.isAdmin)
   const browserTZ = Intl.DateTimeFormat().resolvedOptions().timeZone
   const zones: string[] = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.('timeZone') ?? [browserTZ, 'UTC']
   const unified = settings.unifiedAccounts === 'all' || !settings.unifiedAccounts ? null : (JSON.parse(settings.unifiedAccounts) as number[])
@@ -123,7 +124,68 @@ function General() {
             ))}
         </fieldset>
       )}
+      {isAdmin && <LogoSetting />}
     </div>
+  )
+}
+
+function LogoSetting() {
+  const logoVersion = useStore((s) => s.me?.logoVersion)
+  const [busy, setBusy] = useState(false)
+  const input = useRef<HTMLInputElement>(null)
+  const setLogo = (v: number | undefined) => setState((s) => ({ me: s.me ? { ...s.me, logoVersion: v } : s.me }))
+  const upload = async (file: File | undefined) => {
+    if (!file) return
+    const form = new FormData()
+    form.append('file', file)
+    setBusy(true)
+    try {
+      const r = await api.upload<{ logoVersion: number }>('/branding/logo', form)
+      setLogo(r.logoVersion)
+      toast(t('set.logo.saved'), 'success')
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : t('err.network'), 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+  const reset = async () => {
+    setBusy(true)
+    try {
+      await api.del('/branding/logo')
+      setLogo(undefined)
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : t('err.network'), 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <fieldset className="setting-group">
+      <legend>{t('set.logo')}</legend>
+      <div className="row gap wrap logo-setting">
+        <BrandMark logoVersion={logoVersion} />
+        <input
+          ref={input}
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml,image/x-icon"
+          hidden
+          onChange={(e) => {
+            void upload(e.target.files?.[0])
+            e.target.value = ''
+          }}
+        />
+        <button className="btn small" disabled={busy} onClick={() => input.current?.click()}>
+          <Icon name="image" size={14} /> {t('set.logo.choose')}
+        </button>
+        {!!logoVersion && (
+          <button className="btn small" disabled={busy} onClick={() => void reset()}>
+            {t('set.logo.reset')}
+          </button>
+        )}
+      </div>
+      <p className="muted small">{t('set.logo.hint')}</p>
+    </fieldset>
   )
 }
 

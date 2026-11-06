@@ -42,6 +42,20 @@ export function App() {
     }
   }
 
+  // The favicon follows the instance logo.
+  const logoVersion = me?.logoVersion
+  useEffect(() => {
+    const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+    if (!link) return
+    if (logoVersion) {
+      link.removeAttribute('type')
+      link.href = '/api/v1/branding/logo?v=' + logoVersion
+    } else {
+      link.type = 'image/svg+xml'
+      link.href = '/favicon.svg'
+    }
+  }, [logoVersion])
+
   useEffect(() => {
     void refreshMe()
     return onUnauthorized(() => {

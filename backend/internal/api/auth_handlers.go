@@ -28,6 +28,7 @@ type meResponse struct {
 	Authenticated bool            `json:"authenticated"`
 	AppName       string          `json:"appName"`
 	Version       string          `json:"version"`
+	LogoVersion   int64           `json:"logoVersion,omitempty"`
 	SetupRequired bool            `json:"setupRequired,omitempty"`
 	User          any             `json:"user,omitempty"`
 	CSRFToken     string          `json:"csrfToken,omitempty"`
@@ -43,7 +44,7 @@ type limitsInfo struct {
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
-	resp := meResponse{AppName: s.Cfg.AppName, Version: Version}
+	resp := meResponse{AppName: s.Cfg.AppName, Version: Version, LogoVersion: s.logoVersion(r.Context())}
 	u, sess := userFrom(r), sessionFrom(r)
 	if u == nil {
 		if n, err := s.DB.CountUsers(r.Context()); err == nil && n == 0 {
