@@ -70,6 +70,15 @@ cd frontend && npm run dev   # interface sur http://localhost:5173 (proxy vers :
 make test            # tests Go + TypeScript
 ```
 
+### Publier une release
+
+```bash
+bash scripts/release.sh patch    # 0.2.1 → 0.2.2 (ou minor, major, 1.4.0, 1.4.0-rc.1)
+bash scripts/release.sh          # publie la version actuelle de frontend/package.json
+```
+
+Le script vérifie que l'arbre est propre et à jour, commite le changement de version, crée le tag `vX.Y.Z` et le pousse. Le workflow [release.yml](.github/workflows/release.yml) lance alors les tests, construit les binaires Linux (amd64, arm64) et l'image Docker `ghcr.io/cyril59310/lightmail`, puis publie la release GitHub avec les notes générées depuis les commits. Une version avec suffixe (`-rc.1`) est publiée en pré-release, sans le tag `latest`.
+
 Structure : `backend/` (Go : `cmd/lightmail`, `internal/*`, `migrations/`), `frontend/` (React + Vite + TypeScript), `deployments/` (Caddy, nginx, Traefik), `docs/`.
 
 ## Licence

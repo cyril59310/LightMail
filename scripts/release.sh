@@ -21,7 +21,7 @@ yes=false
 for arg in "$@"; do
   case "$arg" in
     -y | --yes) yes=true ;;
-    -h | --help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h | --help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     patch | minor | major) bump="$arg" ;;
     [0-9]*.[0-9]*.[0-9]*) bump="$arg" ;;
     *) echo "unknown argument: $arg (see --help)" >&2; exit 2 ;;

@@ -5,7 +5,7 @@ VERSION ?= $(shell node -p "require('./frontend/package.json').version")
 IMAGE   ?= lightmail
 COMPOSE ?= docker compose
 
-.PHONY: help frontend backend build test test-race lint docker docker-multiarch up down logs ps secrets \
+.PHONY: help frontend backend build test test-race lint docker docker-multiarch release up down logs ps secrets \
         backup verify-backup restore dev-mail dev clean
 
 help: ## List targets
@@ -33,6 +33,9 @@ docker: ## Build the Docker image for the local platform
 
 docker-multiarch: ## Build amd64 + arm64 images (needs a buildx builder; add --push to publish)
 	docker buildx build --platform linux/amd64,linux/arm64 --build-arg VERSION=$(VERSION) -t $(IMAGE):$(VERSION) .
+
+release: ## Publish a GitHub release (BUMP=patch|minor|major|X.Y.Z, default: current version)
+	./scripts/release.sh $(BUMP)
 
 secrets: ## Generate the master encryption key (once!)
 	@mkdir -p secrets

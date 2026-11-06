@@ -1,0 +1,136 @@
+# Publishes a GitHub release when a version tag (vX.Y.Z) is pushed,
+# usually by scripts/release.sh. The tag must match frontend/package.json.
+#
+# Produces:
+#   - lightmail-<version>-linux-amd64.tar.gz / -linux-arm64.tar.gz (static binary, web client embedded)
+#   - SHA256SUMS
+#   - Docker image ghcr.io/<owner>/lightmail:<version> (+ :latest for stable versions), amd64 + arm64
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+*']
+
+permissions:
+  contents: write # create the release
+  packages: write # push the image to ghcr.io
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the version
+        id: v
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          pkg="$(node -p "require('./frontend/package.json').version")"
+          if [ "$version" != "$pkg" ]; then
+            echo "::error::tag $tag does not match frontend/package.json ($pkg)"
+            exit 1
+          fi
+          prerelease=false
+          case "$version" in *-*) prerelease=true ;; esac
+          {
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+            echo "image=ghcr.io/$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')/lightmail"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache-dependency-path: backend/go.sum
+
+      - name: Web client — install, test, build
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          npm test
+          npx vite build
+          rm -rf ../backend/internal/web/dist
+          mkdir -p ../backend/internal/web/dist
+          cp -r dist/* ../backend/internal/web/dist/
+          touch ../backend/internal/web/dist/.keep
+
+      - name: Server — vet and test
+        working-directory: backend
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Build the binaries
+        working-directory: backend
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          mkdir -p ../dist
+          for arch in amd64 arm64; do
+            name="lightmail-${VERSION}-linux-${arch}"
+            mkdir -p "../dist/$name"
+            CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath \
+              -ldflags "-s -w -X lightmail/internal/api.Version=${VERSION}" \
+              -o "../dist/$name/lightmail" ./cmd/lightmail
+            cp ../LICENSE ../README.md "../dist/$name/"
+            tar -C ../dist -czf "../dist/$name.tar.gz" "$name"
+            rm -rf "../dist/$name"
+          done
+          cd ../dist && sha256sum -- *.tar.gz > SHA256SUMS && cat SHA256SUMS
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: VERSION=${{ steps.v.outputs.version }}
+          tags: |
+            ${{ steps.v.outputs.image }}:${{ steps.v.outputs.version }}
+            ${{ steps.v.outputs.prerelease == 'false' && format('{0}:latest', steps.v.outputs.image) || '' }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.v.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+          IMAGE: ${{ steps.v.outputs.image }}
+        run: |
+          notes="$(mktemp)"
+          {
+            echo "## Docker"
+            echo
+            echo '```sh'
+            echo "docker pull ${IMAGE}:${VERSION}"
+            echo '```'
+            echo
+          } > "$notes"
+          flags=()
+          if [ "${{ steps.v.outputs.prerelease }}" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/SHA256SUMS \
+            --verify-tag --title "LightMail ${VERSION}" \
+            --notes-file "$notes" --generate-notes "${flags[@]}"
