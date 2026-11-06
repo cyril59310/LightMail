@@ -104,6 +104,39 @@ func (db *DB) RotateKeys(ctx context.Context, kr *crypto.Keyring) (int, error) {
 				return err
 			}
 		}
+		// Two-factor authentication secrets of the interface users.
+		urows, err := tx.QueryContext(ctx, `SELECT id,totp_secret_enc,totp_pending_enc FROM users WHERE totp_secret_enc<>'' OR totp_pending_enc<>''`)
+		if err != nil {
+			return err
+		}
+		type urow struct {
+			id      int64
+			sec, pd string
+		}
+		var users []urow
+		for urows.Next() {
+			var r urow
+			if err := urows.Scan(&r.id, &r.sec, &r.pd); err != nil {
+				urows.Close()
+				return err
+			}
+			users = append(users, r)
+		}
+		urows.Close()
+		for _, r := range users {
+			ctxName := fmt.Sprintf("user:%d:totp", r.id)
+			sec, err := re(r.sec, ctxName)
+			if err != nil {
+				return err
+			}
+			pd, err := re(r.pd, ctxName)
+			if err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE users SET totp_secret_enc=?, totp_pending_enc=? WHERE id=?`, sec, pd, r.id); err != nil {
+				return err
+			}
+		}
 		// Pending OAuth states are short-lived: drop them instead of rotating.
 		if _, err := tx.ExecContext(ctx, `DELETE FROM oauth_states`); err != nil {
 			return err

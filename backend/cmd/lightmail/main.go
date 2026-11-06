@@ -43,6 +43,7 @@ Commands:
   gen-key                   Print a new random master encryption key
   user create <name>        Create a user (password read from stdin)
   user set-password <name>  Change a user password (password read from stdin)
+  user reset-2fa <name>     Disable two-factor authentication of a user
   backup [-out FILE] [-with-cache]
                             Write a consistent backup archive (server may be running)
   verify-backup FILE        Check archive checksums, database integrity and key
@@ -209,12 +210,30 @@ func openDB(cfg *config.Config) (*store.DB, error) {
 }
 
 func userCmd(args []string) error {
-	if len(args) != 2 || (args[0] != "create" && args[0] != "set-password") {
-		return errors.New("usage: lightmail user create|set-password <username>")
+	if len(args) != 2 || (args[0] != "create" && args[0] != "set-password" && args[0] != "reset-2fa") {
+		return errors.New("usage: lightmail user create|set-password|reset-2fa <username>")
 	}
 	cfg, _, err := loadConfig()
 	if err != nil {
 		return err
+	}
+	if args[0] == "reset-2fa" {
+		db, err := openDB(cfg)
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		ctx := context.Background()
+		u, err := db.UserByName(ctx, args[1])
+		if err != nil {
+			return fmt.Errorf("user %q: %w", args[1], err)
+		}
+		if err := db.DisableTOTP(ctx, u.ID); err != nil {
+			return err
+		}
+		_ = db.DeleteUserSessions(ctx, u.ID, "")
+		fmt.Println("two-factor authentication disabled, all sessions revoked:", u.Username)
+		return nil
 	}
 	pw, err := readPassword()
 	if err != nil {

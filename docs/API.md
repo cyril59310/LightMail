@@ -32,6 +32,7 @@ curl -s -b ck.txt -X POST -H 'Content-Type: application/json' -H "Origin: https:
 | Domaine | Routes |
 |---|---|
 | Session | `POST /auth/login`, `GET /auth/me`, `POST /auth/logout`, `POST /auth/logout-all`, `POST /auth/password`, `GET /auth/sessions` |
+| Double authentification | `GET /auth/2fa`, `POST /auth/2fa/setup`, `POST /auth/2fa/enable`, `POST /auth/2fa/disable`, `POST /auth/2fa/recovery` ; `/auth/login` accepte un champ `code` et répond `401 totp_required` quand il manque |
 | Fournisseurs | `GET /providers`, `GET /providers/detect?email=` |
 | Comptes | `GET/POST /accounts`, `POST /accounts/test`, `GET/PATCH/DELETE /accounts/{id}`, `POST /accounts/{id}/sync`, `/reconnect`, `/default`, `/revoke` |
 | OAuth2 | `POST /oauth/{provider}/start`, `GET /oauth/{provider}/callback` |

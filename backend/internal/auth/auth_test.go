@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"lightmail/internal/crypto"
 	"lightmail/internal/store"
 )
 
@@ -129,5 +131,92 @@ func TestBruteForceLockout(t *testing.T) {
 	var le *LockoutError
 	if !errors.As(err, &le) || le.RetryAfter <= 0 {
 		t.Fatalf("expected lockout even with right password, got %v", err)
+	}
+}
+
+func TestTOTPCodeRFC6238(t *testing.T) {
+	// RFC 6238 appendix B, SHA-1 key "12345678901234567890" (8 digits there:
+	// the 6-digit codes are their last six digits).
+	secret := b32.EncodeToString([]byte("12345678901234567890"))
+	for ts, want := range map[int64]string{59: "287082", 1111111109: "081804", 1234567890: "005924", 2000000000: "279037"} {
+		got, err := TOTPCode(secret, ts/totpPeriod)
+		if err != nil || got != want {
+			t.Errorf("t=%d: got %s, want %s (%v)", ts, got, want, err)
+		}
+	}
+}
+
+func TestTOTPLogin(t *testing.T) {
+	ctx := context.Background()
+	db := newDB(t)
+	EnsureAdmin(ctx, db, "admin", "very-secret-pass")
+	m := NewManager(db, time.Hour, 24*time.Hour)
+	kr, err := crypto.NewKeyring(bytes.Repeat([]byte{7}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Keyring = kr
+	cur := time.Unix(1_700_000_000, 0)
+	m.now = func() time.Time { return cur }
+	code := func(secret string) string {
+		c, _ := TOTPCode(secret, cur.Unix()/totpPeriod)
+		return c
+	}
+
+	u, _ := db.UserByName(ctx, "admin")
+	if _, _, err := m.TOTPSetup(ctx, u, "wrong-password-x", "LightMail"); err != ErrInvalidCredentials {
+		t.Fatalf("setup with a wrong password: %v", err)
+	}
+	secret, uri, err := m.TOTPSetup(ctx, u, "very-secret-pass", "LightMail")
+	if err != nil || !strings.HasPrefix(uri, "otpauth://totp/LightMail:admin?") {
+		t.Fatalf("setup: %v %s", err, uri)
+	}
+	if _, err := m.TOTPEnable(ctx, u, "000000", ""); err != ErrInvalidTOTP {
+		t.Fatalf("enable with a wrong code: %v", err)
+	}
+	recovery, err := m.TOTPEnable(ctx, u, code(secret), "")
+	if err != nil || len(recovery) != recoveryCodeCount {
+		t.Fatalf("enable: %v %v", err, recovery)
+	}
+	if st, _ := db.TOTPState(ctx, u.ID); strings.Contains(st.SecretEnc, secret) {
+		t.Fatal("TOTP secret stored in clear")
+	}
+
+	if _, _, _, err := m.LoginWithCode(ctx, "admin", "very-secret-pass", "", "1.1.1.1", ""); err != ErrTOTPRequired {
+		t.Fatalf("login without code: %v", err)
+	}
+	if _, _, _, err := m.LoginWithCode(ctx, "admin", "wrong-password-x", "", "1.1.1.1", ""); err != ErrInvalidCredentials {
+		t.Fatalf("a wrong password must not reveal the second factor: %v", err)
+	}
+	// The enable code was the current step: it cannot be replayed.
+	if _, _, _, err := m.LoginWithCode(ctx, "admin", "very-secret-pass", code(secret), "1.1.1.1", ""); err != ErrInvalidTOTP {
+		t.Fatalf("replayed code: %v", err)
+	}
+	cur = cur.Add(totpPeriod * time.Second)
+	if _, _, _, err := m.LoginWithCode(ctx, "admin", "very-secret-pass", code(secret), "1.1.1.1", ""); err != nil {
+		t.Fatalf("login with code: %v", err)
+	}
+	// Recovery codes work once, with or without the dash.
+	rc := strings.ToLower(strings.ReplaceAll(recovery[0], "-", ""))
+	if _, _, _, err := m.LoginWithCode(ctx, "admin", "very-secret-pass", rc, "1.1.1.1", ""); err != nil {
+		t.Fatalf("login with recovery code: %v", err)
+	}
+	if _, _, _, err := m.LoginWithCode(ctx, "admin", "very-secret-pass", recovery[0], "1.1.1.1", ""); err != ErrInvalidTOTP {
+		t.Fatalf("reused recovery code: %v", err)
+	}
+	u, _ = db.UserByName(ctx, "admin")
+	if _, left, _ := m.TOTPStatus(ctx, u); left != recoveryCodeCount-1 {
+		t.Fatalf("recovery codes left: %d", left)
+	}
+
+	cur = cur.Add(totpPeriod * time.Second)
+	if err := m.TOTPDisable(ctx, u, "very-secret-pass", "123"); err != ErrInvalidTOTP {
+		t.Fatalf("disable with a wrong code: %v", err)
+	}
+	if err := m.TOTPDisable(ctx, u, "very-secret-pass", code(secret)); err != nil {
+		t.Fatalf("disable: %v", err)
+	}
+	if _, _, _, err := m.Login(ctx, "admin", "very-secret-pass", "1.1.1.1", ""); err != nil {
+		t.Fatalf("login after disabling: %v", err)
 	}
 }

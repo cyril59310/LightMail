@@ -85,6 +85,7 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, error
 	}
 	ob := outbox.New(cfg, db, as, eng, bs, hub, notifier, m, log)
 	am := auth.NewManager(db, cfg.SessionIdleTTL, cfg.SessionAbsoluteTTL)
+	am.Keyring = kr
 	srv := &api.Server{Cfg: cfg, DB: db, KR: kr, Auth: am, Accounts: as, OAuth: om, Engine: eng, Outbox: ob, Blobs: bs, Hub: hub, Metrics: m, Log: log, Static: web.Handler(cfg.AppName)}
 	m.Extra = func(w io.Writer) { writeDBMetrics(w, db) }
 	return &App{Cfg: cfg, Log: log, DB: db, KR: kr, Blobs: bs, Auth: am, OAuth: om, Engine: eng, Outbox: ob, API: srv, Metrics: m, Handler: srv.Handler()}, nil

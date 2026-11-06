@@ -86,6 +86,11 @@ func (s *Server) Handler() http.Handler {
 	priv("POST /api/v1/auth/logout-all", s.logoutAll)
 	priv("POST /api/v1/auth/password", s.changePassword)
 	priv("GET /api/v1/auth/sessions", s.listSessions)
+	priv("GET /api/v1/auth/2fa", s.totpStatus)
+	priv("POST /api/v1/auth/2fa/setup", s.totpSetup)
+	priv("POST /api/v1/auth/2fa/enable", s.totpEnable)
+	priv("POST /api/v1/auth/2fa/disable", s.totpDisable)
+	priv("POST /api/v1/auth/2fa/recovery", s.totpRecovery)
 
 	priv("GET /api/v1/providers", s.listProviders)
 	priv("GET /api/v1/providers/detect", s.detectProvider)

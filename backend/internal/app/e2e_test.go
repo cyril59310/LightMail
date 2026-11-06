@@ -176,7 +176,7 @@ func TestAllPrivateRoutesRequireAuth(t *testing.T) {
 		{"POST", "/api/v1/drafts"}, {"GET", "/api/v1/outbox"}, {"GET", "/api/v1/notifications"}, {"GET", "/api/v1/events"},
 		{"GET", "/api/v1/settings"}, {"PUT", "/api/v1/settings"}, {"POST", "/api/v1/branding/logo"}, {"DELETE", "/api/v1/branding/logo"}, {"GET", "/api/v1/status"}, {"GET", "/api/v1/metrics"},
 		{"POST", "/api/v1/oauth/google/start"}, {"GET", "/api/v1/oauth/google/callback?code=x&state=y"},
-		{"POST", "/api/v1/auth/logout-all"}, {"POST", "/api/v1/auth/password"}, {"GET", "/api/v1/counters"}, {"GET", "/api/v1/contacts?q=ab"},
+		{"POST", "/api/v1/auth/logout-all"}, {"POST", "/api/v1/auth/password"}, {"GET", "/api/v1/auth/2fa"}, {"POST", "/api/v1/auth/2fa/setup"}, {"POST", "/api/v1/auth/2fa/enable"}, {"POST", "/api/v1/auth/2fa/disable"}, {"POST", "/api/v1/auth/2fa/recovery"}, {"GET", "/api/v1/counters"}, {"GET", "/api/v1/contacts?q=ab"},
 	}
 	for _, r := range routes {
 		resp, _ := c.do(r[0], r[1], map[string]string{})
@@ -646,5 +646,67 @@ func TestCustomLogo(t *testing.T) {
 	}
 	if resp, _ := anon.do("GET", "/api/v1/branding/logo", nil); resp.StatusCode != 404 || logoVersion() != nil {
 		t.Fatalf("logo still served after reset: %d", resp.StatusCode)
+	}
+}
+
+func TestTwoFactorLoginOverHTTP(t *testing.T) {
+	e := startE2E(t)
+	c := e.client()
+	c.login("admin", adminPassword)
+	other := e.client()
+	other.login("admin", adminPassword)
+
+	if resp, _ := c.do("POST", "/api/v1/auth/2fa/setup", map[string]string{"password": "wrong-password-123"}); resp.StatusCode != 403 {
+		t.Fatalf("setup with a wrong password: %d", resp.StatusCode)
+	}
+	resp, b := c.do("POST", "/api/v1/auth/2fa/setup", map[string]string{"password": adminPassword})
+	if resp.StatusCode != 200 {
+		t.Fatalf("setup: %d %s", resp.StatusCode, b)
+	}
+	setup := decode[struct{ Secret, URI string }](t, b)
+	now := func() string {
+		code, _ := auth.TOTPCode(setup.Secret, time.Now().Unix()/30)
+		return code
+	}
+	resp, b = c.do("POST", "/api/v1/auth/2fa/enable", map[string]string{"code": now()})
+	if resp.StatusCode != 200 {
+		t.Fatalf("enable: %d %s", resp.StatusCode, b)
+	}
+	recovery := decode[struct{ RecoveryCodes []string }](t, b).RecoveryCodes
+	if len(recovery) != 10 {
+		t.Fatalf("recovery codes: %v", recovery)
+	}
+	// Enabling 2FA revokes the other sessions, keeps the current one.
+	if resp, _ := other.do("GET", "/api/v1/settings", nil); resp.StatusCode != 401 {
+		t.Fatalf("other session still valid: %d", resp.StatusCode)
+	}
+	_, b = c.do("GET", "/api/v1/auth/me", nil)
+	if !strings.Contains(string(b), `"totpEnabled":true`) {
+		t.Fatalf("me: %s", b)
+	}
+
+	fresh := e.client()
+	if resp, b := fresh.do("POST", "/api/v1/auth/login", map[string]string{"username": "admin", "password": adminPassword}); resp.StatusCode != 401 || !strings.Contains(string(b), "totp_required") {
+		t.Fatalf("login without code: %d %s", resp.StatusCode, b)
+	}
+	if resp, b := fresh.do("POST", "/api/v1/auth/login", map[string]string{"username": "admin", "password": adminPassword, "code": "000000"}); resp.StatusCode != 401 || !strings.Contains(string(b), "invalid_totp") {
+		t.Fatalf("login with a wrong code: %d %s", resp.StatusCode, b)
+	}
+	if resp, b := fresh.do("POST", "/api/v1/auth/login", map[string]string{"username": "admin", "password": adminPassword, "code": recovery[0]}); resp.StatusCode != 200 {
+		t.Fatalf("login with a recovery code: %d %s", resp.StatusCode, b)
+	}
+	_, b = c.do("GET", "/api/v1/auth/2fa", nil)
+	if st := decode[struct {
+		Enabled      bool
+		RecoveryLeft int
+	}](t, b); !st.Enabled || st.RecoveryLeft != 9 {
+		t.Fatalf("status: %s", b)
+	}
+
+	if resp, _ := c.do("POST", "/api/v1/auth/2fa/disable", map[string]string{"password": adminPassword, "code": recovery[1]}); resp.StatusCode != 204 {
+		t.Fatalf("disable: %d", resp.StatusCode)
+	}
+	if resp := e.client().login("admin", adminPassword); resp.StatusCode != 200 {
+		t.Fatalf("login after disabling: %d", resp.StatusCode)
 	}
 }

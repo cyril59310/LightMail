@@ -25,6 +25,9 @@ type Manager struct {
 	ipLimiter   *Limiter
 	userLimiter *Limiter
 	now         func() time.Time
+	// Keyring encrypts the TOTP secrets; two-factor authentication is
+	// unavailable without it.
+	Keyring *crypto.Keyring
 }
 
 func NewManager(db *store.DB, idleTTL, absoluteTTL time.Duration) *Manager {
@@ -49,6 +52,13 @@ func (e *LockoutError) Unwrap() error { return ErrLocked }
 // Login verifies credentials and creates a session. It returns the bearer
 // token to store in the cookie (only its hash is persisted).
 func (m *Manager) Login(ctx context.Context, username, password, ip, ua string) (*store.Session, string, *store.User, error) {
+	return m.LoginWithCode(ctx, username, password, "", ip, ua)
+}
+
+// LoginWithCode is Login with the second factor of users who enabled it
+// (a TOTP or recovery code). Without a code such users get ErrTOTPRequired,
+// only after a correct password.
+func (m *Manager) LoginWithCode(ctx context.Context, username, password, code, ip, ua string) (*store.Session, string, *store.User, error) {
 	username = strings.TrimSpace(username)
 	userKey := "u:" + strings.ToLower(username)
 	ipKey := "ip:" + ip
@@ -70,6 +80,20 @@ func (m *Manager) Login(ctx context.Context, username, password, ip, ua string) 
 		m.ipLimiter.Fail(ipKey)
 		m.userLimiter.Fail(userKey)
 		return nil, "", nil, ErrInvalidCredentials
+	}
+	if u.TOTPEnabled {
+		if strings.TrimSpace(code) == "" {
+			return nil, "", nil, ErrTOTPRequired
+		}
+		ok, err := m.verifySecondFactor(ctx, u.ID, code)
+		if err != nil {
+			return nil, "", nil, err
+		}
+		if !ok {
+			m.ipLimiter.Fail(ipKey)
+			m.userLimiter.Fail(userKey)
+			return nil, "", nil, ErrInvalidTOTP
+		}
 	}
 	m.ipLimiter.Succeed(ipKey)
 	m.userLimiter.Succeed(userKey)

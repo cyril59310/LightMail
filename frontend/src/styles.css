@@ -269,6 +269,38 @@ input[type='checkbox'] {
   vertical-align: middle;
   font-weight: 500;
 }
+.tag.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.qr-wrap {
+  display: flex;
+  justify-content: center;
+}
+.qr-code {
+  width: 220px;
+  height: 220px;
+  max-width: 100%;
+  border-radius: 8px;
+  background: #fff;
+  image-rendering: pixelated;
+}
+.totp-secret {
+  word-break: break-all;
+  user-select: all;
+}
+.recovery-codes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 6px;
+}
+.recovery-codes code {
+  font-size: 14px;
+  letter-spacing: 0.04em;
+}
 .tag.warn {
   background: var(--warn-soft);
   color: var(--warn);

@@ -29,8 +29,9 @@ Les tests couvrent 22 vecteurs XSS connus, l'endpoint HTML de bout en bout et un
 - Mots de passe : Argon2id (m = 19 Mio, t = 2, p = 1, paramètres alternatifs recommandés par OWASP), 10 caractères minimum. Deux hachages concurrents au plus, mémoire rendue au système après chaque hachage.
 - Sessions : jeton aléatoire de 256 bits dans le cookie, seul son SHA-256 est stocké. Expiration après 7 jours d'inactivité, 30 jours maximum (configurables). Changer de mot de passe ferme les autres sessions. *Déconnecter toutes les sessions* est disponible.
 - Anti force brute : par IP, 10 échecs puis verrouillage doublant de 1 min à 1 h ; par identifiant, 5 échecs puis 30 s à 15 min. L'adresse client vient de `X-Forwarded-For` seulement si le proxy figure dans `TRUSTED_PROXIES`.
+- Double authentification (TOTP, RFC 6238 : HMAC-SHA1, pas de 30 s, 6 chiffres, ±1 pas de tolérance), activable par chaque utilisateur dans *Paramètres › Sécurité*. Le code n’est demandé qu’après un mot de passe correct ; un code déjà accepté ne peut pas être rejoué ; les codes erronés comptent dans l’anti force brute. 10 codes de secours à usage unique (~50 bits chacun), stockés hachés (SHA-256). L’activation ferme les autres sessions ; la désactivation exige le mot de passe et un code. En cas de perte : `lightmail user reset-2fa <nom>` (ferme aussi toutes les sessions).
 - Aucune page de création de compte non authentifiée : le premier administrateur vient de `LIGHTMAIL_ADMIN_PASSWORD` ou de la ligne de commande.
-- Toutes les routes `/api/v1` hors `health`, `auth/login`, `auth/me` et `openapi.yaml` exigent une session (test automatique sur 38 routes). Chaque ressource est filtrée par utilisateur (test d'isolation inter-utilisateurs).
+- Toutes les routes `/api/v1` hors `health`, `auth/login`, `auth/me`, `branding/logo` (lecture) et `openapi.yaml` exigent une session (test automatique de toutes les routes privées). Chaque ressource est filtrée par utilisateur (test d'isolation inter-utilisateurs).
 
 ## En-têtes HTTP
 
@@ -46,6 +47,8 @@ Les tests couvrent 22 vecteurs XSS connus, l'endpoint HTML de bout en bout et un
 | `code_verifier` PKCE | `oauth_states.verifier_enc`, chiffré, à usage unique, 10 min |
 | Secrets clients OAuth2 | Variables d'environnement ou fichiers `*_FILE`, séparés des jetons utilisateurs |
 | Mot de passe de l'interface | Hachage Argon2id |
+| Secret TOTP (double authentification) | `users.totp_secret_enc` : AES-256-GCM, contexte `user:<id>:totp`, inclus dans la rotation de clé |
+| Codes de secours | Hachages SHA-256 dans `users.totp_recovery` |
 
 Format des valeurs chiffrées : `v1.<id de clé>.<base64url(nonce‖chiffré)>`. Le **contexte** (table, ligne, champ) est passé en données authentifiées : une valeur copiée vers un autre compte ou un autre champ ne se déchiffre pas. Au démarrage, un marqueur chiffré vérifie que la clé configurée correspond à la base ; sinon le démarrage est refusé avec un message explicite.
 
@@ -77,4 +80,3 @@ docker compose up -d
 
 - Le contenu en cache (en-têtes, corps téléchargés, pièces jointes) est stocké **en clair** dans le volume de données, comme dans un client lourd. Protégez le disque (chiffrement du volume ou du VPS) si nécessaire.
 - Les feuilles de style des emails restent actives dans l'iframe isolée, ce qui n'a pas d'impact hors de l'iframe.
-- Pas de 2FA sur l'interface en v1 : utilisez un mot de passe fort, et éventuellement une authentification supplémentaire au niveau du reverse proxy.

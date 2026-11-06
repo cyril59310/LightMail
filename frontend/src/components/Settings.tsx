@@ -9,6 +9,7 @@ import { EndpointFields, startOAuth } from './AccountWizard'
 import { confirmDialog } from './Dialogs'
 import { deleteFolder, NewFolderDialog } from './FolderDialog'
 import { RichEditor } from './Editor'
+import { TwoFactorSettings } from './TwoFactor'
 import { BrandMark, Icon } from './Icons'
 
 const tabs = ['general', 'accounts', 'notifications', 'security', 'about'] as const
@@ -642,6 +643,7 @@ function Security() {
           <button className="btn primary">{t('act.save')}</button>
         </div>
       </form>
+      <TwoFactorSettings />
       <div className="card">
         <h3>{t('set.sessions')}</h3>
         <ul className="plain-list">

@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"crypto/subtle"
 	"database/sql"
+	"encoding/json"
 	"errors"
 )
 
@@ -12,6 +14,8 @@ type User struct {
 	PasswordHash string `json:"-"`
 	IsAdmin      bool   `json:"isAdmin"`
 	CreatedAt    int64  `json:"createdAt"`
+	// TOTPEnabled is true once two-factor authentication is active.
+	TOTPEnabled bool `json:"totpEnabled"`
 }
 
 type Session struct {
@@ -42,20 +46,21 @@ func (db *DB) CreateUser(ctx context.Context, username, hash string, admin bool)
 }
 
 func (db *DB) UserByName(ctx context.Context, username string) (*User, error) {
-	return db.scanUser(db.R.QueryRowContext(ctx, `SELECT id,username,password_hash,is_admin,created_at FROM users WHERE username=?`, username))
+	return db.scanUser(db.R.QueryRowContext(ctx, `SELECT id,username,password_hash,is_admin,created_at,totp_secret_enc<>'' FROM users WHERE username=?`, username))
 }
 
 func (db *DB) UserByID(ctx context.Context, id int64) (*User, error) {
-	return db.scanUser(db.R.QueryRowContext(ctx, `SELECT id,username,password_hash,is_admin,created_at FROM users WHERE id=?`, id))
+	return db.scanUser(db.R.QueryRowContext(ctx, `SELECT id,username,password_hash,is_admin,created_at,totp_secret_enc<>'' FROM users WHERE id=?`, id))
 }
 
 func (db *DB) scanUser(row *sql.Row) (*User, error) {
 	var u User
-	var admin int
-	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &admin, &u.CreatedAt); err != nil {
+	var admin, totp int
+	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &admin, &u.CreatedAt, &totp); err != nil {
 		return nil, notFound(err)
 	}
 	u.IsAdmin = admin == 1
+	u.TOTPEnabled = totp == 1
 	return &u, nil
 }
 
@@ -161,3 +166,97 @@ func (db *DB) SetSettings(ctx context.Context, userID int64, kv map[string]strin
 }
 
 var ErrConflict = errors.New("conflict")
+
+// TOTPState is the two-factor authentication data of a user.
+type TOTPState struct {
+	SecretEnc  string
+	PendingEnc string
+	LastStep   int64
+	Recovery   []string // hashes of the unused recovery codes
+}
+
+func (db *DB) TOTPState(ctx context.Context, userID int64) (*TOTPState, error) {
+	var st TOTPState
+	var rec string
+	err := db.R.QueryRowContext(ctx, `SELECT totp_secret_enc,totp_pending_enc,totp_last_step,totp_recovery FROM users WHERE id=?`, userID).
+		Scan(&st.SecretEnc, &st.PendingEnc, &st.LastStep, &rec)
+	if err != nil {
+		return nil, notFound(err)
+	}
+	if err := json.Unmarshal([]byte(rec), &st.Recovery); err != nil {
+		st.Recovery = nil
+	}
+	return &st, nil
+}
+
+// SetTOTPPending stores the secret awaiting confirmation ("" to cancel).
+func (db *DB) SetTOTPPending(ctx context.Context, userID int64, enc string) error {
+	_, err := db.W.ExecContext(ctx, `UPDATE users SET totp_pending_enc=?, updated_at=? WHERE id=?`, enc, now(), userID)
+	return err
+}
+
+// EnableTOTP activates two-factor authentication with a confirmed secret.
+func (db *DB) EnableTOTP(ctx context.Context, userID int64, secretEnc string, step int64, recovery []string) error {
+	rec, _ := json.Marshal(recovery)
+	_, err := db.W.ExecContext(ctx, `UPDATE users SET totp_secret_enc=?, totp_pending_enc='', totp_last_step=?, totp_recovery=?, updated_at=? WHERE id=?`,
+		secretEnc, step, string(rec), now(), userID)
+	return err
+}
+
+// DisableTOTP removes every two-factor authentication data of the user.
+func (db *DB) DisableTOTP(ctx context.Context, userID int64) error {
+	res, err := db.W.ExecContext(ctx, `UPDATE users SET totp_secret_enc='', totp_pending_enc='', totp_last_step=0, totp_recovery='[]', updated_at=? WHERE id=?`, now(), userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ConsumeTOTPStep records an accepted time step. It fails (false) when this
+// step or a later one was already used, which prevents replaying a code.
+func (db *DB) ConsumeTOTPStep(ctx context.Context, userID, step int64) (bool, error) {
+	res, err := db.W.ExecContext(ctx, `UPDATE users SET totp_last_step=? WHERE id=? AND totp_last_step<?`, step, userID, step)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
+}
+
+// ConsumeRecoveryCode removes a recovery code hash; false if it is unknown.
+func (db *DB) ConsumeRecoveryCode(ctx context.Context, userID int64, hash string) (bool, error) {
+	ok := false
+	err := db.Tx(ctx, func(tx *sql.Tx) error {
+		var rec string
+		if err := tx.QueryRowContext(ctx, `SELECT totp_recovery FROM users WHERE id=?`, userID).Scan(&rec); err != nil {
+			return notFound(err)
+		}
+		var list []string
+		_ = json.Unmarshal([]byte(rec), &list)
+		left := list[:0]
+		for _, h := range list {
+			if !ok && subtle.ConstantTimeCompare([]byte(h), []byte(hash)) == 1 {
+				ok = true
+				continue
+			}
+			left = append(left, h)
+		}
+		if !ok {
+			return nil
+		}
+		b, _ := json.Marshal(left)
+		_, err := tx.ExecContext(ctx, `UPDATE users SET totp_recovery=? WHERE id=?`, string(b), userID)
+		return err
+	})
+	return ok, err
+}
+
+// SetRecoveryCodes replaces the recovery code hashes.
+func (db *DB) SetRecoveryCodes(ctx context.Context, userID int64, recovery []string) error {
+	rec, _ := json.Marshal(recovery)
+	_, err := db.W.ExecContext(ctx, `UPDATE users SET totp_recovery=?, updated_at=? WHERE id=?`, string(rec), now(), userID)
+	return err
+}

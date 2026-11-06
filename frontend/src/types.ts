@@ -201,7 +201,7 @@ export interface Me {
   /** Set when an administrator uploaded a custom logo. */
   logoVersion?: number
   setupRequired?: boolean
-  user?: { id: number; username: string; isAdmin: boolean }
+  user?: { id: number; username: string; isAdmin: boolean; totpEnabled?: boolean }
   csrfToken?: string
   limits?: { maxAttachmentBytes: number; maxMessageBytes: number; undoSendSeconds: number; maxAccounts: number }
   oauth?: Record<string, boolean>

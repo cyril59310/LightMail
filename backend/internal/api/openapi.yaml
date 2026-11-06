@@ -231,9 +231,10 @@ paths:
               properties:
                 username: { type: string }
                 password: { type: string }
+                code: { type: string, description: "TOTP or recovery code, for users with two-factor authentication" }
       responses:
         "200": { description: Session created; returns csrfToken }
-        "401": { $ref: "#/components/responses/Error" }
+        "401": { description: "invalid_credentials, totp_required (correct password, code missing) or invalid_totp", $ref: "#/components/responses/Error" }
         "429": { description: Locked out; see Retry-After }
   /auth/me:
     get:
@@ -254,6 +255,28 @@ paths:
       responses: { "204": { description: OK }, "403": { $ref: "#/components/responses/Error" } }
   /auth/sessions:
     get: { summary: Active sessions, responses: { "200": { description: OK } } }
+  /auth/2fa:
+    get: { summary: "Two-factor authentication status: {enabled, recoveryLeft}", responses: { "200": { description: OK } } }
+  /auth/2fa/setup:
+    post:
+      summary: Start the TOTP set-up (password required); returns {secret, uri} with an otpauth:// URI
+      requestBody: { content: { application/json: { schema: { type: object, properties: { password: { type: string } } } } } }
+      responses: { "200": { description: OK }, "403": { $ref: "#/components/responses/Error" }, "409": { $ref: "#/components/responses/Error" } }
+  /auth/2fa/enable:
+    post:
+      summary: Confirm the set-up with a first code; returns {recoveryCodes} and signs out the other sessions
+      requestBody: { content: { application/json: { schema: { type: object, properties: { code: { type: string } } } } } }
+      responses: { "200": { description: OK }, "403": { $ref: "#/components/responses/Error" }, "409": { $ref: "#/components/responses/Error" } }
+  /auth/2fa/disable:
+    post:
+      summary: Disable two-factor authentication (password and TOTP or recovery code required)
+      requestBody: { content: { application/json: { schema: { type: object, properties: { password: { type: string }, code: { type: string } } } } } }
+      responses: { "204": { description: Disabled }, "403": { $ref: "#/components/responses/Error" }, "429": { description: Locked out } }
+  /auth/2fa/recovery:
+    post:
+      summary: Replace the recovery codes (TOTP or recovery code required); returns {recoveryCodes}
+      requestBody: { content: { application/json: { schema: { type: object, properties: { code: { type: string } } } } } }
+      responses: { "200": { description: OK }, "403": { $ref: "#/components/responses/Error" }, "429": { description: Locked out } }
   /providers:
     get: { summary: Known providers and their settings, responses: { "200": { description: OK } } }
   /providers/detect:
