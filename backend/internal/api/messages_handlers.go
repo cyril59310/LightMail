@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"lightmail/internal/events"
 	"lightmail/internal/imapx"
 	lmime "lightmail/internal/mime"
 	"lightmail/internal/search"
@@ -504,6 +505,7 @@ func (s *Server) counters(w http.ResponseWriter, r *http.Request) {
 func (s *Server) createFolder(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		AccountID int64  `json:"accountId"`
+		ParentID  int64  `json:"parentId"`
 		Name      string `json:"name"`
 	}
 	if !readJSON(w, r, &req, 4<<10) {
@@ -513,11 +515,12 @@ func (s *Server) createFolder(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	f, err := s.Engine.CreateFolder(r.Context(), req.AccountID, req.Name)
+	f, err := s.Engine.CreateFolder(r.Context(), req.AccountID, req.ParentID, req.Name)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "folder", imapx.Describe(err))
 		return
 	}
+	s.Hub.Publish(userFrom(r).ID, events.Event{Type: events.TypeFolders, Data: map[string]any{"accountId": f.AccountID}})
 	writeJSON(w, http.StatusCreated, f)
 }
 
@@ -571,6 +574,7 @@ func (s *Server) deleteFolder(w http.ResponseWriter, r *http.Request) {
 		s.mailError(w, r, err)
 		return
 	}
+	s.Hub.Publish(userFrom(r).ID, events.Event{Type: events.TypeFolders, Data: map[string]any{"accountId": f.AccountID}})
 	w.WriteHeader(http.StatusNoContent)
 }
 

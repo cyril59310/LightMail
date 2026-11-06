@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { t } from '../i18n'
 import { href, useRoute } from '../router'
 import { openCompose, saveAccountLayout, useStore } from '../store'
 import type { Account, Folder } from '../types'
 import { accountColor, accountLabel, accountLayout, folderDepth, folderLabel } from '../util'
+import { deleteFolder, NewFolderDialog } from './FolderDialog'
 import { Icon } from './Icons'
 
 const roleIcon: Record<string, string> = {
@@ -32,6 +34,7 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
   const outbox = useStore((s) => s.outbox)
   const me = useStore((s) => s.me)
   const [collapsed, setCollapsed] = useState<Record<number, boolean>>({})
+  const [newFolder, setNewFolder] = useState<{ account: Account; parentId?: number } | null>(null)
   const cur = route.path.join('/')
   const pendingOut = outbox.filter((o) => o.status !== 'sent' && o.status !== 'canceled').length
   const hasJunk = folders.some((f) => f.role === 'junk')
@@ -63,28 +66,46 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
     const problem = a.status === 'error' || a.status === 'auth_error'
     return (
       <div key={a.id} className="nav-account">
-        <button className="nav-account-head" onClick={() => setCollapsed((c) => ({ ...c, [a.id]: open }))} aria-expanded={open} title={a.email}>
-          <span className="dot" style={{ background: accountColor(a) }} />
-          <span className="nav-label">{accountLabel(a)}</span>
-          {problem && <Icon name="alert" className="warn" size={15} title={a.lastError || t(('acct.status.' + a.status) as never)} />}
-          {a.status === 'syncing' && <Icon name="refresh" className="spin muted" size={14} />}
-        </button>
+        <div className="nav-account-row">
+          <button className="nav-account-head" onClick={() => setCollapsed((c) => ({ ...c, [a.id]: open }))} aria-expanded={open} title={a.email}>
+            <span className="dot" style={{ background: accountColor(a) }} />
+            <span className="nav-label">{accountLabel(a)}</span>
+            {problem && <Icon name="alert" className="warn" size={15} title={a.lastError || t(('acct.status.' + a.status) as never)} />}
+            {a.status === 'syncing' && <Icon name="refresh" className="spin muted" size={14} />}
+          </button>
+          <button className="icon-btn small nav-hover-btn" onClick={() => setNewFolder({ account: a })} title={t('folder.newIn', { account: accountLabel(a) })} aria-label={t('folder.newIn', { account: accountLabel(a) })}>
+            <Icon name="plus" size={14} />
+          </button>
+        </div>
         {open &&
           list
             .filter((f) => f.selectable && (f.syncEnabled || f.role === 'inbox'))
             .map((f) => (
-              <a
-                key={f.id}
-                href={href('folder/' + f.id)}
-                className={'nav-item folder' + (cur === 'folder/' + f.id ? ' active' : '')}
-                style={{ paddingLeft: 28 + folderDepth(f) * 12 }}
-                onClick={onNavigate}
-                title={f.name}
-              >
-                <Icon name={roleIcon[f.role] ?? 'folder'} size={16} />
-                <span className="nav-label">{folderLabel(f)}</span>
-                {f.unread > 0 && f.role !== 'sent' && f.role !== 'trash' && f.role !== 'drafts' && <span className="badge subtle">{f.unread}</span>}
-              </a>
+              <div key={f.id} className="nav-folder-row">
+                <a
+                  href={href('folder/' + f.id)}
+                  className={'nav-item folder' + (cur === 'folder/' + f.id ? ' active' : '')}
+                  style={{ paddingLeft: 28 + folderDepth(f) * 12 }}
+                  onClick={onNavigate}
+                  title={f.name}
+                >
+                  <Icon name={roleIcon[f.role] ?? 'folder'} size={16} />
+                  <span className="nav-label">{folderLabel(f)}</span>
+                  {f.unread > 0 && f.role !== 'sent' && f.role !== 'trash' && f.role !== 'drafts' && <span className="badge subtle">{f.unread}</span>}
+                </a>
+                {!f.role && (
+                  <span className="nav-folder-actions">
+                    {f.delimiter && (
+                      <button className="icon-btn small" onClick={() => setNewFolder({ account: a, parentId: f.id })} title={t('folder.new')} aria-label={t('folder.new')}>
+                        <Icon name="plus" size={14} />
+                      </button>
+                    )}
+                    <button className="icon-btn small" onClick={() => void deleteFolder(f)} title={t('folder.delete')} aria-label={t('folder.delete')}>
+                      <Icon name="trash" size={14} />
+                    </button>
+                  </span>
+                )}
+              </div>
             ))}
       </div>
     )
@@ -143,6 +164,8 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
           <span className="nav-label">{t('nav.logout')}</span>
         </button>
       </div>
+      {newFolder &&
+        createPortal(<NewFolderDialog account={newFolder.account} parentId={newFolder.parentId} onClose={() => setNewFolder(null)} />, document.body)}
     </nav>
   )
 }

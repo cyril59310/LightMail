@@ -321,7 +321,7 @@ paths:
       responses: { "200": { description: OK } }
     post:
       summary: Create a folder on the server
-      requestBody: { content: { application/json: { schema: { type: object, properties: { accountId: { type: integer }, name: { type: string } } } } } }
+      requestBody: { content: { application/json: { schema: { type: object, properties: { accountId: { type: integer }, parentId: { type: integer, description: "Dossier parent (0 = racine)" }, name: { type: string } } } } } }
       responses: { "201": { description: Created } }
   /folders/{id}:
     parameters: [{ $ref: "#/components/parameters/id" }]

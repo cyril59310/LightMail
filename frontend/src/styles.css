@@ -526,6 +526,44 @@ input[type='checkbox'] {
 .nav-account {
   margin-bottom: 6px;
 }
+.nav-account-row,
+.nav-folder-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.nav-account-row .nav-account-head,
+.nav-folder-row .nav-item {
+  flex: 1;
+  min-width: 0;
+}
+.nav-hover-btn,
+.nav-folder-actions {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.nav-folder-actions {
+  position: absolute;
+  right: 4px;
+  display: flex;
+  gap: 2px;
+  background: var(--hover);
+  border-radius: 6px;
+}
+.nav-account-row:hover .nav-hover-btn,
+.nav-folder-row:hover .nav-folder-actions,
+.nav-hover-btn:focus-visible,
+.nav-folder-actions:focus-within {
+  opacity: 1;
+}
+.nav-folder-row:hover .badge {
+  visibility: hidden;
+}
+@media (hover: none) {
+  .nav-hover-btn {
+    opacity: 1;
+  }
+}
 .nav-category {
   display: flex;
   align-items: center;

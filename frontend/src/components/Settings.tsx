@@ -7,6 +7,7 @@ import type { Account } from '../types'
 import { accountColor, accountLabel, accountLayout, folderLabel, formatSize, moveAccount, orderedAccounts, relativeTime } from '../util'
 import { EndpointFields, startOAuth } from './AccountWizard'
 import { confirmDialog } from './Dialogs'
+import { deleteFolder, NewFolderDialog } from './FolderDialog'
 import { RichEditor } from './Editor'
 import { Icon } from './Icons'
 
@@ -295,6 +296,7 @@ function AccountCard({ account: a, open: initiallyOpen }: { account: Account; op
   const [form, setForm] = useState({ displayName: a.displayName, senderName: a.senderName, color: a.color || accountColor(a), signatureHtml: a.signatureHtml, syncIntervalSec: a.syncIntervalSec, username: a.username, imap: a.imap, smtp: a.smtp, password: '', tlsCaPem: '' })
   const [busy, setBusy] = useState(false)
   const [sigKey, setSigKey] = useState(0)
+  const [creatingFolder, setCreatingFolder] = useState(false)
   useEffect(() => {
     setForm((f) => ({ ...f, displayName: a.displayName, senderName: a.senderName, signatureHtml: a.signatureHtml }))
     setSigKey((k) => k + 1)
@@ -427,9 +429,29 @@ function AccountCard({ account: a, open: initiallyOpen }: { account: Account; op
                   onChange={(e) => void api.patch(`/folders/${f.id}`, { syncEnabled: e.target.checked }).then(() => loadFolders())}
                 />{' '}
                 {folderLabel(f)} <span className="muted">({f.local}/{f.total})</span>
+                {!f.role && (
+                  <button
+                    type="button"
+                    className="icon-btn small"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      void deleteFolder(f)
+                    }}
+                    title={t('folder.delete')}
+                    aria-label={t('folder.delete')}
+                  >
+                    <Icon name="trash" size={14} />
+                  </button>
+                )}
               </label>
             ))}
           </div>
+          <div className="row">
+            <button className="btn small" onClick={() => setCreatingFolder(true)}>
+              <Icon name="plus" size={14} /> {t('folder.new')}
+            </button>
+          </div>
+          {creatingFolder && <NewFolderDialog account={a} openAfter={false} onClose={() => setCreatingFolder(false)} />}
 
           <h3>{t('acct.server')}</h3>
           {a.authType === 'oauth2' ? (

@@ -317,23 +317,71 @@ func (e *Engine) byRole(ctx context.Context, accountID int64, role string) (*sto
 	return d, nil
 }
 
-// CreateFolder creates a mailbox on the server and locally.
-func (e *Engine) CreateFolder(ctx context.Context, accountID int64, name string) (*store.Folder, error) {
-	return e.createFolder(ctx, accountID, name, "")
+// ErrInvalidFolder reports a folder creation request that cannot be honoured.
+var ErrInvalidFolder = errors.New("invalid folder")
+
+// CreateFolder creates a user mailbox on the server and locally. With a
+// non-zero parentID the mailbox is created as a child of that folder.
+func (e *Engine) CreateFolder(ctx context.Context, accountID, parentID int64, name string) (*store.Folder, error) {
+	name = strings.TrimSpace(name)
+	if parentID == 0 {
+		return e.createFolder(ctx, accountID, name, "")
+	}
+	p, err := e.db.Folder(ctx, parentID)
+	if err != nil || p.AccountID != accountID {
+		return nil, fmt.Errorf("%w: unknown parent folder", ErrInvalidFolder)
+	}
+	if p.Delimiter == "" || strings.Contains(strings.ToLower(p.Attrs), strings.ToLower(string(imap.MailboxAttrNoInferiors))) {
+		return nil, fmt.Errorf("%w: this folder cannot contain subfolders", ErrInvalidFolder)
+	}
+	if name == "" || strings.Contains(name, p.Delimiter) {
+		return nil, fmt.Errorf("%w: the name cannot contain %q", ErrInvalidFolder, p.Delimiter)
+	}
+	return e.createMailbox(ctx, accountID, p.Name+p.Delimiter+name, p.Delimiter, "", false)
 }
 
+// createFolder creates a top-level mailbox, inside the personal namespace
+// when the server requires one (e.g. "INBOX." on Courier).
 func (e *Engine) createFolder(ctx context.Context, accountID int64, name, role string) (*store.Folder, error) {
-	name = strings.TrimSpace(name)
-	if name == "" || len(name) > 200 || strings.ContainsAny(name, "\r\n*%") {
-		return nil, errors.New("invalid folder name")
+	return e.createMailbox(ctx, accountID, name, "", role, true)
+}
+
+func (e *Engine) createMailbox(ctx context.Context, accountID int64, name, delim, role string, topLevel bool) (*store.Folder, error) {
+	if strings.TrimSpace(name) == "" || len(name) > 200 || strings.ContainsAny(name, "\r\n*%") {
+		return nil, fmt.Errorf("%w: invalid folder name", ErrInvalidFolder)
+	}
+	if delim == "" {
+		delim = e.accountDelimiter(ctx, accountID)
 	}
 	err := e.WithConn(ctx, accountID, func(c *imapx.Client) error {
+		if topLevel && c.Caps.Has(imap.CapNamespace) {
+			if ns, err := c.Namespace().Wait(); err == nil && len(ns.Personal) > 0 {
+				p := ns.Personal[0]
+				if p.Delim != 0 {
+					delim = string(p.Delim)
+				}
+				if p.Prefix != "" && !strings.HasPrefix(name, p.Prefix) && !strings.EqualFold(name, "INBOX") {
+					name = p.Prefix + name
+				}
+			}
+		}
 		return c.Create(name, nil).Wait()
 	})
 	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "exist") {
 		return nil, err
 	}
-	return e.db.UpsertFolder(ctx, &store.Folder{AccountID: accountID, Name: name, Delimiter: "/", Role: role, Selectable: true, Subscribed: true, SyncEnabled: true})
+	return e.db.UpsertFolder(ctx, &store.Folder{AccountID: accountID, Name: name, Delimiter: delim, Role: role, Selectable: true, Subscribed: true, SyncEnabled: true})
+}
+
+// accountDelimiter returns the hierarchy delimiter already seen for the account.
+func (e *Engine) accountDelimiter(ctx context.Context, accountID int64) string {
+	all, _ := e.db.AccountFolders(ctx, accountID)
+	for _, f := range all {
+		if f.Delimiter != "" {
+			return f.Delimiter
+		}
+	}
+	return "/"
 }
 
 // DeleteFolder removes a mailbox on the server and locally.

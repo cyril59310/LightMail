@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emersion/go-imap/v2"
+
 	"lightmail/internal/auth"
 	"lightmail/internal/config"
 	"lightmail/internal/logging"
@@ -525,4 +527,69 @@ func (c *client) upload(name string, data []byte) map[string]any {
 		c.e.t.Fatalf("upload: %d %s", resp.StatusCode, b)
 	}
 	return decode[map[string]any](c.e.t, b)
+}
+
+func TestCreateAndDeleteFolders(t *testing.T) {
+	e := startE2E(t)
+	c := e.client()
+	c.login("admin", adminPassword)
+	acct := e.addAccount(c)
+	accountID := int64(acct["id"].(float64))
+	// Let the first sync mirror the mailbox list before changing it.
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		_, b := c.do("GET", fmt.Sprintf("/api/v1/accounts/%d", accountID), nil)
+		if decode[map[string]any](t, b)["lastSyncOkAt"] != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("account never synced")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	type folder struct {
+		ID        int64  `json:"id"`
+		Name      string `json:"name"`
+		Delimiter string `json:"delimiter"`
+		Role      string `json:"role"`
+	}
+	resp, b := c.do("POST", "/api/v1/folders", map[string]any{"accountId": accountID, "name": "Projets"})
+	if resp.StatusCode != 201 {
+		t.Fatalf("create folder: %d %s", resp.StatusCode, b)
+	}
+	parent := decode[folder](t, b)
+	if parent.Name != "Projets" || parent.Role != "" {
+		t.Fatalf("unexpected folder: %s", b)
+	}
+
+	resp, b = c.do("POST", "/api/v1/folders", map[string]any{"accountId": accountID, "parentId": parent.ID, "name": "Client A"})
+	if resp.StatusCode != 201 {
+		t.Fatalf("create subfolder: %d %s", resp.StatusCode, b)
+	}
+	child := decode[folder](t, b)
+	if child.Name != "Projets"+parent.Delimiter+"Client A" {
+		t.Fatalf("subfolder name: %q", child.Name)
+	}
+	if _, err := e.imap.Users["alice@test"].Status(child.Name, &imap.StatusOptions{}); err != nil {
+		t.Fatalf("subfolder missing on the IMAP server: %v", err)
+	}
+
+	// The leaf name cannot smuggle a hierarchy level.
+	resp, _ = c.do("POST", "/api/v1/folders", map[string]any{"accountId": accountID, "parentId": parent.ID, "name": "a" + parent.Delimiter + "b"})
+	if resp.StatusCode != 400 {
+		t.Fatalf("delimiter in leaf name accepted: %d", resp.StatusCode)
+	}
+
+	resp, b = c.do("DELETE", fmt.Sprintf("/api/v1/folders/%d", child.ID), nil)
+	if resp.StatusCode != 204 {
+		t.Fatalf("delete subfolder: %d %s", resp.StatusCode, b)
+	}
+	_, b = c.do("GET", "/api/v1/folders", nil)
+	list := decode[struct{ Items []folder }](t, b)
+	for _, f := range list.Items {
+		if f.ID == child.ID {
+			t.Fatal("deleted folder still listed")
+		}
+	}
 }
