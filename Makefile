@@ -3,9 +3,11 @@
 
 VERSION ?= $(shell node -p "require('./frontend/package.json').version")
 IMAGE   ?= lightmail
+# Image published by the release workflow (used by docker-compose.yml).
+PUBLISHED_IMAGE ?= ghcr.io/cyril59310/lightmail
 COMPOSE ?= docker compose
 
-.PHONY: help frontend backend build test test-race lint docker docker-multiarch release up down logs ps secrets \
+.PHONY: help frontend backend build test test-race lint docker docker-multiarch release up update up-local down logs ps secrets \
         backup verify-backup restore dev-mail dev clean
 
 help: ## List targets
@@ -40,11 +42,18 @@ release: ## Publish a GitHub release (BUMP=patch|minor|major|X.Y.Z, default: cur
 secrets: ## Generate the master encryption key (once!)
 	@mkdir -p secrets
 	@if [ -f secrets/master_key ]; then echo "secrets/master_key already exists: not overwriting"; exit 1; fi
-	@docker run --rm $(IMAGE):latest gen-key > secrets/master_key && chmod 600 secrets/master_key
+	@docker run --rm $(PUBLISHED_IMAGE):latest gen-key > secrets/master_key && chmod 600 secrets/master_key
 	@echo "secrets/master_key created. Back it up somewhere safe: without it, stored credentials are lost."
 
-up: ## Start (build if needed)
-	$(COMPOSE) up -d --build
+up: ## Start with the published image
+	$(COMPOSE) up -d
+
+update: ## Pull the published image and restart on it
+	$(COMPOSE) pull lightmail
+	$(COMPOSE) up -d
+
+up-local: ## Build the image from the sources and start on it
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 down: ## Stop
 	$(COMPOSE) down

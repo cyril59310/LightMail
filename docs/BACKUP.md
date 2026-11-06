@@ -76,7 +76,7 @@ Au redémarrage, LightMail resynchronise de façon incrémentale.
 ## Migrer vers un autre VPS
 
 1. Ancien serveur : `make backup`, puis copiez l'archive **et** `secrets/master_key` (par un canal sûr) ainsi que `.env`.
-2. Nouveau serveur : installez Docker, clonez le dépôt, replacez `.env` et `secrets/master_key`, puis `docker compose build`.
+2. Nouveau serveur : installez Docker, récupérez `docker-compose.yml` (voir [INSTALL.md](INSTALL.md#1-récupérer-les-fichiers-dinstallation)), replacez `.env` et `secrets/master_key` (même `LIGHTMAIL_VERSION` que l'ancien serveur), puis `docker compose pull`.
 3. Copiez l'archive dans le volume : `docker compose up -d && docker compose cp manuelle.tar.gz lightmail:/data/backups/`.
 4. `make restore FILE=/data/backups/manuelle.tar.gz`.
 5. Mettez à jour le DNS. Si le domaine change, modifiez `LIGHTMAIL_PUBLIC_URL` **et** les URI de redirection des applications OAuth2.

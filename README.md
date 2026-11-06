@@ -15,13 +15,14 @@ Client mail **léger, multi-comptes et auto-hébergeable** : un binaire Go uniqu
 
 ## Démarrage rapide
 
-Prérequis : Docker et Docker Compose v2, un nom de domaine et un reverse proxy HTTPS (Caddy fourni).
+Prérequis : Docker et Docker Compose v2, un nom de domaine et un reverse proxy HTTPS (Caddy fourni). L'image `ghcr.io/cyril59310/lightmail` (amd64, arm64) est publiée à chaque release : rien à compiler.
 
 ```bash
-git clone <ce dépôt> lightmail && cd lightmail
-cp .env.example .env                 # renseigner LIGHTMAIL_PUBLIC_URL, LIGHTMAIL_ADMIN_PASSWORD…
-docker compose build
-make secrets                         # ou : docker run --rm lightmail gen-key > secrets/master_key
+mkdir -p /opt/lightmail/deployments /opt/lightmail/secrets && cd /opt/lightmail
+curl -fsSLO https://github.com/cyril59310/LightMail/releases/latest/download/docker-compose.yml
+curl -fsSL -o .env https://github.com/cyril59310/LightMail/releases/latest/download/.env.example        # puis renseigner LIGHTMAIL_PUBLIC_URL, LIGHTMAIL_ADMIN_PASSWORD…
+curl -fsSL -o deployments/Caddyfile https://github.com/cyril59310/LightMail/releases/latest/download/Caddyfile
+docker run --rm ghcr.io/cyril59310/lightmail gen-key > secrets/master_key && chmod 600 secrets/master_key
 docker compose up -d
 # HTTPS automatique avec le Caddy fourni :
 LIGHTMAIL_DOMAIN=mail.example.com docker compose --profile caddy up -d
@@ -68,6 +69,7 @@ make dev-mail        # serveurs IMAPS/SMTPS locaux avec messages générés
 make dev             # backend (export LIGHTMAIL_MASTER_KEY=$(go run ./backend/cmd/lightmail gen-key))
 cd frontend && npm run dev   # interface sur http://localhost:5173 (proxy vers :8080)
 make test            # tests Go + TypeScript
+make up-local        # construire l'image depuis les sources et démarrer dessus
 ```
 
 ### Publier une release

@@ -128,9 +128,14 @@ jobs:
             echo "docker pull ${IMAGE}:${VERSION}"
             echo '```'
             echo
+            echo "Installation : [docs/INSTALL.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/docs/INSTALL.md). Mise à jour : \`docker compose pull && docker compose up -d\`."
+            echo
           } > "$notes"
           flags=()
           if [ "${{ steps.v.outputs.prerelease }}" = "true" ]; then flags+=(--prerelease); fi
+          # Files needed to install with the published image, without cloning.
+          cp docker-compose.yml .env.example deployments/Caddyfile dist/
           gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/SHA256SUMS \
+            dist/docker-compose.yml dist/.env.example dist/Caddyfile \
             --verify-tag --title "LightMail ${VERSION}" \
             --notes-file "$notes" --generate-notes "${flags[@]}"

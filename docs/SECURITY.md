@@ -58,7 +58,7 @@ Format des valeurs chiffrées : `v1.<id de clé>.<base64url(nonce‖chiffré)>`.
 ## Rotation de la clé maître
 
 ```bash
-NEW=$(docker run --rm lightmail gen-key)
+NEW=$(docker run --rm ghcr.io/cyril59310/lightmail gen-key)
 OLD=$(cat secrets/master_key)
 docker compose stop lightmail
 docker compose run --rm --no-deps -e LIGHTMAIL_MASTER_KEY_FILE= \

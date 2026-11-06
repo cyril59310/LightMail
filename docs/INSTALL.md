@@ -7,14 +7,23 @@
 - Un nom de domaine pointant vers le VPS (indispensable pour HTTPS et pour OAuth2).
 - Ressources : 1 vCPU et 256 Mo libres suffisent pour un usage personnel. La limite par défaut du conteneur est de 512 Mio.
 
-## 1. Récupérer le projet et construire l'image
+## 1. Récupérer les fichiers d'installation
+
+LightMail est distribué sous forme d'image Docker, `ghcr.io/cyril59310/lightmail` (amd64 et arm64), publiée à chaque [release](https://github.com/cyril59310/LightMail/releases). Il suffit de trois fichiers, joints à chaque release :
 
 ```bash
-git clone <dépôt> lightmail && cd lightmail
-docker compose build            # ou : make docker
+mkdir -p /opt/lightmail/deployments /opt/lightmail/secrets && cd /opt/lightmail
+curl -fsSLO https://github.com/cyril59310/LightMail/releases/latest/download/docker-compose.yml
+curl -fsSL -o .env.example https://github.com/cyril59310/LightMail/releases/latest/download/.env.example
+curl -fsSL -o deployments/Caddyfile https://github.com/cyril59310/LightMail/releases/latest/download/Caddyfile    # seulement pour le Caddy fourni (étape 5)
+docker compose pull
 ```
 
-L'image est construite en trois étapes (Node pour l'interface, Go pour le binaire, image finale distroless sans shell) et exécutée avec l'utilisateur non privilégié `65532`.
+L'image est minimale (distroless, sans shell) et s'exécute avec l'utilisateur non privilégié `65532`.
+
+Par défaut, le compose utilise le tag `latest`. Pour figer une version et ne mettre à jour que lorsque vous le décidez, indiquez-la dans `.env` : `LIGHTMAIL_VERSION=0.3.0`.
+
+> **Construire depuis les sources** (développement, architecture non publiée) : clonez le dépôt puis `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build` (ou `make up-local`). L'image est construite en trois étapes : Node pour l'interface, Go pour le binaire, image finale distroless.
 
 ## 2. Configurer
 
@@ -36,10 +45,10 @@ Toutes les variables sont commentées dans [`.env.example`](../.env.example). Ch
 ## 3. Générer la clé de chiffrement
 
 ```bash
-make secrets
-# équivaut à :
-mkdir -p secrets && docker run --rm lightmail gen-key > secrets/master_key && chmod 600 secrets/master_key
+docker run --rm ghcr.io/cyril59310/lightmail gen-key > secrets/master_key && chmod 600 secrets/master_key
 ```
+
+(Depuis un clone du dépôt : `make secrets`, qui refuse d'écraser une clé existante.)
 
 La clé (32 octets aléatoires) chiffre les mots de passe IMAP/SMTP et les jetons OAuth2. Elle est montée en secret Docker (`/run/secrets/lightmail_master_key`) et **n'est jamais incluse dans les sauvegardes**. Conservez-en une copie hors du serveur (gestionnaire de mots de passe). LightMail refuse de démarrer sans clé, ou avec une clé qui ne correspond pas à la base.
 

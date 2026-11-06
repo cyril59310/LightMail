@@ -1,9 +1,13 @@
-# LightMail — standard deployment.
+# LightMail — standard deployment, using the published image
+# ghcr.io/cyril59310/lightmail (amd64 + arm64). See docs/INSTALL.md.
 #
-#   1. cp .env.example .env            (edit LIGHTMAIL_PUBLIC_URL, OAuth2 IDs…)
-#   2. mkdir -p secrets && docker run --rm lightmail:latest gen-key > secrets/master_key
-#      (or: make secrets)
-#   3. docker compose up -d --build
+#   1. cp .env.example .env            (edit LIGHTMAIL_PUBLIC_URL, LIGHTMAIL_ADMIN_PASSWORD…)
+#   2. mkdir -p secrets && docker run --rm ghcr.io/cyril59310/lightmail gen-key > secrets/master_key
+#   3. docker compose up -d
+#
+# Pin a version with LIGHTMAIL_VERSION=x.y.z in .env (default: latest).
+# Update: docker compose pull && docker compose up -d
+# Build from the sources instead: docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 #
 # The app listens on 127.0.0.1:8080 only: put an HTTPS reverse proxy in
 # front of it (see deployments/), or enable the bundled Caddy service:
@@ -13,12 +17,7 @@ name: lightmail
 
 services:
   lightmail:
-    build:
-      context: .
-      args:
-        # Empty = version of frontend/package.json
-        VERSION: ${LIGHTMAIL_VERSION:-}
-    image: lightmail:${LIGHTMAIL_VERSION:-latest}
+    image: ghcr.io/cyril59310/lightmail:${LIGHTMAIL_VERSION:-latest}
     container_name: lightmail
     restart: unless-stopped
     env_file: .env
