@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type DragEvent as ReactDragEvent } from 'react'
 import { ApiError, api } from '../api'
 import { t } from '../i18n'
 import { getState, loadOutbox, openCompose, setState, toast, useStore, type ComposeRequest } from '../store'
@@ -62,6 +62,25 @@ export function Composer({ req, onClose }: { req: ComposeRequest; onClose: () =>
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState<string[]>([])
   const [minimized, setMinimized] = useState(false)
+  // Large centred window, remembered for the next messages.
+  const [expanded, setExpandedState] = useState(() => {
+    try {
+      return localStorage.getItem('lm.composeExpanded') === '1'
+    } catch {
+      return false
+    }
+  })
+  const setExpanded = (v: boolean) => {
+    setExpandedState(v)
+    try {
+      localStorage.setItem('lm.composeExpanded', v ? '1' : '0')
+    } catch {
+      /* storage unavailable */
+    }
+  }
+  // Files dragged over the window: depth counts nested dragenter/dragleave.
+  const [dragging, setDragging] = useState(false)
+  const dragDepth = useRef(0)
   const [error, setError] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
   const draftRef = useRef<number | undefined>(req.draftId)
@@ -189,6 +208,20 @@ export function Composer({ req, onClose }: { req: ComposeRequest; onClose: () =>
     return () => window.removeEventListener('beforeunload', warn)
   }, [saveState])
 
+  // A file dropped next to the composer must not make the browser open it
+  // (the message being written would be left).
+  useEffect(() => {
+    const guard = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes('Files')) e.preventDefault()
+    }
+    window.addEventListener('dragover', guard)
+    window.addEventListener('drop', guard)
+    return () => {
+      window.removeEventListener('dragover', guard)
+      window.removeEventListener('drop', guard)
+    }
+  }, [])
+
   if (!st) {
     return (
       <div className="composer">
@@ -199,7 +232,7 @@ export function Composer({ req, onClose }: { req: ComposeRequest; onClose: () =>
   const account = accounts.find((a) => a.id === st.accountId)
 
   // ---- attachments -------------------------------------------------------
-  const addFiles = async (files: FileList | null) => {
+  const addFiles = async (files: FileList | File[] | null) => {
     if (!files) return
     for (const f of Array.from(files)) {
       if (limits && f.size > limits.maxAttachmentBytes) {
@@ -283,22 +316,60 @@ export function Composer({ req, onClose }: { req: ComposeRequest; onClose: () =>
     }
   }
 
+  const hasFiles = (e: ReactDragEvent) => e.dataTransfer.types.includes('Files')
+  const dragHandlers = {
+    onDragEnter: (e: ReactDragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      dragDepth.current++
+      setDragging(true)
+      if (minimized) setMinimized(false)
+    },
+    onDragOver: (e: ReactDragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+    },
+    onDragLeave: (e: ReactDragEvent) => {
+      if (!hasFiles(e)) return
+      dragDepth.current = Math.max(0, dragDepth.current - 1)
+      if (dragDepth.current === 0) setDragging(false)
+    },
+    onDrop: (e: ReactDragEvent) => {
+      if (!hasFiles(e)) return
+      // Also stops the editor from inserting the file inline.
+      e.preventDefault()
+      e.stopPropagation()
+      dragDepth.current = 0
+      setDragging(false)
+      void addFiles(Array.from(e.dataTransfer.files))
+    },
+  }
+
   const title = st.subject || t('compose.title')
   return (
-    <div className={'composer' + (minimized ? ' minimized' : '')} role="dialog" aria-label={title}
+    <>
+    {expanded && !minimized && <div className="composer-backdrop" onClick={() => setExpanded(false)} />}
+    <div className={'composer' + (minimized ? ' minimized' : expanded ? ' expanded' : '') + (dragging ? ' dragging' : '')} role="dialog" aria-label={title}
+      {...dragHandlers}
       onKeyDown={(e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
           e.preventDefault()
           void send()
         }
       }}>
-      <div className="composer-head" onClick={() => minimized && setMinimized(false)}>
+      <div className="composer-head" onClick={() => minimized && setMinimized(false)} onDoubleClick={() => !minimized && setExpanded(!expanded)}>
         <span className="ellipsis grow">{title}</span>
         <span className="muted small">{saveState === 'saving' ? t('compose.saving') : saveState === 'saved' ? t('compose.saved') : ''}</span>
-        <button className="icon-btn small" onClick={(e) => { e.stopPropagation(); setMinimized((v) => !v) }} aria-label={t('compose.minimize')}>
+        {!minimized && (
+          <button className="icon-btn small composer-expand" onClick={(e) => { e.stopPropagation(); setExpanded(!expanded) }} aria-label={expanded ? t('compose.collapse') : t('compose.expand')} title={expanded ? t('compose.collapse') : t('compose.expand')}>
+            <Icon name={expanded ? 'restore' : 'maximize'} size={15} />
+          </button>
+        )}
+        <button className="icon-btn small" onClick={(e) => { e.stopPropagation(); setMinimized((v) => !v) }} aria-label={t('compose.minimize')} title={t('compose.minimize')}>
           <Icon name="minimize" size={15} />
         </button>
-        <button className="icon-btn small" onClick={(e) => { e.stopPropagation(); void close() }} aria-label={t('act.close')}>
+        <button className="icon-btn small" onClick={(e) => { e.stopPropagation(); void close() }} aria-label={t('act.close')} title={t('act.close')}>
           <Icon name="x" size={15} />
         </button>
       </div>
@@ -332,7 +403,7 @@ export function Composer({ req, onClose }: { req: ComposeRequest; onClose: () =>
             <input id="cmp-subject" value={st.subject} onChange={(e) => update({ subject: e.target.value })} maxLength={900} />
           </div>
           {st.isHtml ? (
-            <RichEditor key={editorKey} initialHTML={st.html} onChange={(html) => update({ html })} autoFocus={st.mode === 'reply' || st.mode === 'replyall'} />
+            <RichEditor key={editorKey} initialHTML={st.html} onChange={(html) => update({ html })} autoFocus={st.mode === 'reply' || st.mode === 'replyall'} onFiles={(files) => void addFiles(files)} />
           ) : (
             <textarea className="plain-editor" value={st.text} onChange={(e) => update({ text: e.target.value })} autoFocus={st.mode === 'reply' || st.mode === 'replyall'} />
           )}
@@ -376,7 +447,14 @@ export function Composer({ req, onClose }: { req: ComposeRequest; onClose: () =>
           </div>
         </div>
       )}
+      {dragging && (
+        <div className="drop-overlay" aria-hidden="true">
+          <Icon name="paperclip" size={28} />
+          <span>{t('compose.dropHere')}</span>
+        </div>
+      )}
     </div>
+    </>
   )
 
   async function undoSend(outboxId: number, id?: number) {

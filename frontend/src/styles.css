@@ -1026,6 +1026,44 @@ input[type='checkbox'] {
   height: auto;
   width: 320px;
 }
+/* Large centred window (Expand button or double click on the title bar). */
+.composer.expanded {
+  top: 4vh;
+  bottom: 4vh;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: min(1100px, calc(100vw - 48px));
+  height: auto;
+  border-bottom: 1px solid var(--border);
+  border-radius: 12px;
+}
+.composer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 12, 16, 0.35);
+  z-index: 39;
+}
+/* Files dragged over the composer. */
+.drop-overlay {
+  position: absolute;
+  inset: 40px 8px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 2px dashed var(--accent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 88%, var(--accent));
+  color: var(--accent);
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 2;
+}
+.composer.dragging .composer-body {
+  opacity: 0.5;
+}
 .composer-head {
   display: flex;
   align-items: center;
@@ -1151,10 +1189,87 @@ input[type='checkbox'] {
 }
 .editor-toolbar {
   display: flex;
+  align-items: center;
   gap: 2px;
   padding: 4px 10px;
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
+}
+.icon-btn.active {
+  background: var(--hover);
+}
+.tool-menu {
+  position: relative;
+  display: inline-flex;
+}
+.tool-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 46;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 6px;
+}
+.size-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+}
+.size-menu button {
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  line-height: 1.2;
+}
+.size-menu button:hover,
+.size-menu button:focus-visible {
+  background: var(--hover);
+}
+.color-menu {
+  width: 196px;
+}
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  padding: 2px;
+}
+.swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--border);
+  cursor: pointer;
+  padding: 0;
+}
+.swatch:hover,
+.swatch:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.custom-color {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.custom-color input[type='color'] {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
 }
 .editor-area {
   flex: 1;
@@ -1716,15 +1831,22 @@ legend {
     padding: 16px 16px 60px;
   }
   .composer,
-  .composer.minimized {
+  .composer.minimized,
+  .composer.expanded {
     inset: 0;
     width: auto;
     height: auto;
     border-radius: 0;
+    transform: none;
     padding-top: env(safe-area-inset-top, 0px);
   }
   .composer-head {
     border-radius: 0;
+  }
+  /* Already full screen on phones. */
+  .composer-expand,
+  .composer-backdrop {
+    display: none;
   }
   .grid2,
   .grid3 {

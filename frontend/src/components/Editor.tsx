@@ -1,13 +1,35 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import { api, qs } from '../api'
-import { t } from '../i18n'
+import { t, type Key } from '../i18n'
 import type { Address } from '../types'
 import { formatAddress, parseAddresses } from '../util'
 import { Icon } from './Icons'
 
+// Sizes use <font size>, understood by every mail client (Outlook included).
+const fontSizes: [string, Key, string][] = [
+  ['2', 'compose.size.small', '0.82em'],
+  ['3', 'compose.size.normal', '1em'],
+  ['5', 'compose.size.large', '1.4em'],
+  ['6', 'compose.size.huge', '1.8em'],
+]
+
+// Mid-tone colours, readable on the white background of most mail clients
+// and on the dark theme of the editor.
+const textColors = [
+  '#d93025', '#e8710a', '#f9ab00', '#188038', '#12a4af', '#1a73e8', '#7b3fe4', '#c2185b',
+  '#5f6368', '#000000', '#8d6e63', '#9aa0a6',
+]
+
 /** Minimal rich-text editor based on contentEditable. */
-export function RichEditor({ initialHTML, onChange, autoFocus }: { initialHTML: string; onChange: (html: string) => void; autoFocus?: boolean }) {
+export function RichEditor({ initialHTML, onChange, autoFocus, onFiles }: { initialHTML: string; onChange: (html: string) => void; autoFocus?: boolean; onFiles?: (files: File[]) => void }) {
   const ref = useRef<HTMLDivElement>(null)
+  // Last selection inside the editor: menus and the colour picker take the
+  // focus, the selection is restored before applying a command.
+  const range = useRef<Range | null>(null)
+  const [menu, setMenu] = useState<'size' | 'color' | null>(null)
+  const [lastColor, setLastColor] = useState(textColors[0])
+  const menus = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     if (ref.current) {
       ref.current.innerHTML = initialHTML
@@ -19,11 +41,64 @@ export function RichEditor({ initialHTML, onChange, autoFocus }: { initialHTML: 
     }
     // initialHTML is only applied on mount / when the editor key changes
   }, [])
-  const exec = (cmd: string, value?: string) => {
-    ref.current?.focus()
-    document.execCommand(cmd, false, value)
-    if (ref.current) onChange(ref.current.innerHTML)
+
+  useEffect(() => {
+    if (!menu) return
+    const close = (e: MouseEvent) => {
+      if (!menus.current?.contains(e.target as Node)) setMenu(null)
+    }
+    const esc = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        setMenu(null)
+      }
+    }
+    document.addEventListener('mousedown', close)
+    window.addEventListener('keydown', esc, true)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      window.removeEventListener('keydown', esc, true)
+    }
+  }, [menu])
+
+  const inEditor = (sel: Selection | null): boolean => !!sel && sel.rangeCount > 0 && !!ref.current?.contains(sel.anchorNode) && !!ref.current?.contains(sel.focusNode)
+  const saveRange = () => {
+    const sel = window.getSelection()
+    if (sel && inEditor(sel)) range.current = sel.getRangeAt(0).cloneRange()
   }
+  // Follow every selection change (mouse released outside the editor,
+  // double click, Shift+arrows, select all…), not only clicks inside it.
+  useEffect(() => {
+    document.addEventListener('selectionchange', saveRange)
+    return () => document.removeEventListener('selectionchange', saveRange)
+  }, [])
+
+  const exec = (cmd: string, value?: string) => {
+    const el = ref.current
+    if (!el) return
+    const sel = window.getSelection()
+    // The toolbar keeps the focus in the editor: use the live selection when
+    // it is there, and only restore the saved one when something took the
+    // focus (colour picker).
+    if (!inEditor(sel) && range.current) {
+      el.focus()
+      sel?.removeAllRanges()
+      sel?.addRange(range.current)
+    } else if (document.activeElement !== el) {
+      el.focus()
+    }
+    // Presentational tags (<font>) rather than CSS spans: better support in mail clients.
+    document.execCommand('styleWithCSS', false, 'false')
+    document.execCommand(cmd, false, value)
+    saveRange()
+    onChange(el.innerHTML)
+  }
+  const color = (c: string) => {
+    setLastColor(c)
+    setMenu(null)
+    exec('foreColor', c)
+  }
+
   const tools: [string, string, () => void][] = [
     ['bold', t('compose.bold'), () => exec('bold')],
     ['italic', t('compose.italic'), () => exec('italic')],
@@ -41,14 +116,59 @@ export function RichEditor({ initialHTML, onChange, autoFocus }: { initialHTML: 
     ],
     ['eraser', t('compose.clear'), () => exec('removeFormat')],
   ]
+  const toolButton = (icon: string, label: string, run: () => void, extra?: { expanded?: boolean; style?: CSSProperties }) => (
+    <button
+      key={icon}
+      type="button"
+      className={'icon-btn small' + (extra?.expanded ? ' active' : '')}
+      title={label}
+      aria-label={label}
+      aria-haspopup={extra?.expanded !== undefined ? 'true' : undefined}
+      aria-expanded={extra?.expanded}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={run}
+      style={extra?.style}
+    >
+      <Icon name={icon} size={15} />
+    </button>
+  )
+
   return (
     <div className="rich-editor">
-      <div className="editor-toolbar" role="toolbar">
-        {tools.map(([icon, label, run]) => (
-          <button key={icon} type="button" className="icon-btn small" title={label} aria-label={label} onMouseDown={(e) => e.preventDefault()} onClick={run}>
-            <Icon name={icon} size={15} />
-          </button>
-        ))}
+      <div className="editor-toolbar" role="toolbar" ref={menus}>
+        {tools.slice(0, 3).map(([icon, label, run]) => toolButton(icon, label, run))}
+        <span className="tool-menu">
+          {toolButton('textsize', t('compose.size'), () => setMenu((m) => (m === 'size' ? null : 'size')), { expanded: menu === 'size' })}
+          {menu === 'size' && (
+            <div className="tool-popover size-menu" role="menu">
+              {fontSizes.map(([size, key, preview]) => (
+                <button key={size} type="button" role="menuitem" onMouseDown={(e) => e.preventDefault()} onClick={() => { setMenu(null); exec('fontSize', size) }}>
+                  <span style={{ fontSize: preview }}>{t(key)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </span>
+        <span className="tool-menu">
+          {toolButton('palette', t('compose.color'), () => setMenu((m) => (m === 'color' ? null : 'color')), { expanded: menu === 'color', style: { color: lastColor } })}
+          {menu === 'color' && (
+            <div className="tool-popover color-menu" role="menu" aria-label={t('compose.color')}>
+              <div className="swatches">
+                {textColors.map((c) => (
+                  <button key={c} type="button" role="menuitem" className="swatch" style={{ background: c }} title={c} aria-label={c} onMouseDown={(e) => e.preventDefault()} onClick={() => color(c)} />
+                ))}
+              </div>
+              <div className="custom-color">
+                <input type="color" value={lastColor} onChange={(e) => setLastColor(e.target.value)} aria-label={t('compose.customColor')} />
+                <span className="grow small">{t('compose.customColor')}</span>
+                <button type="button" className="btn small" onMouseDown={(e) => e.preventDefault()} onClick={() => color(lastColor)}>
+                  {t('compose.apply')}
+                </button>
+              </div>
+            </div>
+          )}
+        </span>
+        {tools.slice(3).map(([icon, label, run]) => toolButton(icon, label, run))}
       </div>
       <div
         ref={ref}
@@ -56,11 +176,19 @@ export function RichEditor({ initialHTML, onChange, autoFocus }: { initialHTML: 
         contentEditable
         role="textbox"
         aria-multiline="true"
-        onInput={(e) => onChange(e.currentTarget.innerHTML)}
+        onInput={(e) => {
+          saveRange()
+          onChange(e.currentTarget.innerHTML)
+        }}
+        onKeyUp={saveRange}
+        onMouseUp={saveRange}
+        onBlur={saveRange}
         onPaste={(e) => {
-          // Paste files/images is not supported inline; plain text keeps
-          // foreign styles out of the message.
-          if (e.clipboardData.files.length) e.preventDefault()
+          // Pasted files become attachments; inline images are not supported.
+          if (e.clipboardData.files.length) {
+            e.preventDefault()
+            onFiles?.(Array.from(e.clipboardData.files))
+          }
         }}
         suppressContentEditableWarning
       />
