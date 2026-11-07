@@ -14,7 +14,7 @@ LightMail est distribué sous forme d'image Docker, `ghcr.io/cyril59310/lightmai
 ```bash
 mkdir -p /opt/lightmail/deployments /opt/lightmail/secrets && cd /opt/lightmail
 curl -fsSLO https://github.com/cyril59310/LightMail/releases/latest/download/docker-compose.yml
-curl -fsSL -o .env.example https://github.com/cyril59310/LightMail/releases/latest/download/.env.example
+curl -fsSL -o .env.example https://github.com/cyril59310/LightMail/releases/latest/download/default.env.example
 curl -fsSL -o deployments/Caddyfile https://github.com/cyril59310/LightMail/releases/latest/download/Caddyfile    # seulement pour le Caddy fourni (étape 5)
 docker compose pull
 ```

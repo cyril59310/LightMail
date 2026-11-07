@@ -20,7 +20,7 @@ Prérequis : Docker et Docker Compose v2, un nom de domaine et un reverse proxy 
 ```bash
 mkdir -p /opt/lightmail/deployments /opt/lightmail/secrets && cd /opt/lightmail
 curl -fsSLO https://github.com/cyril59310/LightMail/releases/latest/download/docker-compose.yml
-curl -fsSL -o .env https://github.com/cyril59310/LightMail/releases/latest/download/.env.example        # puis renseigner LIGHTMAIL_PUBLIC_URL, LIGHTMAIL_ADMIN_PASSWORD…
+curl -fsSL -o .env https://github.com/cyril59310/LightMail/releases/latest/download/default.env.example        # puis renseigner LIGHTMAIL_PUBLIC_URL, LIGHTMAIL_ADMIN_PASSWORD…
 curl -fsSL -o deployments/Caddyfile https://github.com/cyril59310/LightMail/releases/latest/download/Caddyfile
 docker run --rm ghcr.io/cyril59310/lightmail gen-key > secrets/master_key
 sudo chown 65532:65532 secrets/master_key && sudo chmod 600 secrets/master_key   # lisible par le conteneur seul
