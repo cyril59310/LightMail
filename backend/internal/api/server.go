@@ -113,6 +113,10 @@ func (s *Server) Handler() http.Handler {
 	priv("DELETE /api/v1/folders/{id}", s.deleteFolder)
 	priv("GET /api/v1/counters", s.counters)
 	priv("GET /api/v1/contacts", s.contacts)
+	priv("GET /api/v1/address-book", s.listSavedContacts)
+	priv("POST /api/v1/address-book", s.createSavedContact)
+	priv("PUT /api/v1/address-book/{id}", s.updateSavedContact)
+	priv("DELETE /api/v1/address-book/{id}", s.deleteSavedContact)
 
 	priv("GET /api/v1/messages", s.listMessages)
 	priv("GET /api/v1/search", s.searchMessages)

@@ -3,6 +3,16 @@ export interface Address {
   addr: string
 }
 
+/** Address book entry, private to the signed-in user. */
+export interface SavedContact {
+  id: number
+  name: string
+  email: string
+  notes: string
+  createdAt: number
+  updatedAt: number
+}
+
 export interface Endpoint {
   host: string
   port: number

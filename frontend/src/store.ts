@@ -18,6 +18,7 @@ export interface ComposeRequest {
   messageId?: number
   draftId?: number
   to?: string
+  toName?: string
 }
 
 export interface State {

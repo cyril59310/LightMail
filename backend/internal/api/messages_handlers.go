@@ -624,10 +624,34 @@ func (s *Server) contacts(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"items": []any{}})
 		return
 	}
-	list, err := s.DB.Contacts(r.Context(), userFrom(r).ID, q, 8)
+	const max = 8
+	uid := userFrom(r).ID
+	// Address book entries first, then frequent correspondents.
+	saved, err := s.DB.SavedContacts(r.Context(), uid, q, max)
 	if err != nil {
 		s.fail(w, r, err)
 		return
+	}
+	seen := map[string]bool{}
+	list := make([]store.Contact, 0, max)
+	for _, c := range saved {
+		seen[strings.ToLower(c.Email)] = true
+		list = append(list, store.Contact{Name: c.Name, Addr: c.Email, Saved: true})
+	}
+	if len(list) < max {
+		frequent, err := s.DB.Contacts(r.Context(), uid, q, max)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		for _, c := range frequent {
+			if len(list) == max {
+				break
+			}
+			if !seen[strings.ToLower(c.Addr)] {
+				list = append(list, c)
+			}
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": list})
 }

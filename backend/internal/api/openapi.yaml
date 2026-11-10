@@ -177,6 +177,13 @@ components:
         size: { type: integer }
         contentId: { type: string }
         inline: { type: boolean }
+    ContactInput:
+      type: object
+      required: [email]
+      properties:
+        name: { type: string, maxLength: 200 }
+        email: { type: string, format: email }
+        notes: { type: string, maxLength: 2000 }
     MessagePage:
       type: object
       properties:
@@ -367,9 +374,32 @@ paths:
     get: { summary: Unread counters for the sidebar, responses: { "200": { description: OK } } }
   /contacts:
     get:
-      summary: Recipient autocompletion from known correspondents
+      summary: Recipient autocompletion — address book entries first (saved=true), then frequent correspondents
       parameters: [{ name: q, in: query, schema: { type: string } }]
       responses: { "200": { description: OK } }
+  /address-book:
+    get:
+      summary: Address book of the signed-in user (private to that user), sorted by name
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 200 }, description: text in the name or the address }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 10000 } }
+      responses: { "200": { description: OK } }
+    post:
+      summary: Add a contact
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ContactInput" } } } }
+      responses:
+        "201": { description: Created }
+        "400": { description: "invalid_email, or name/notes too long" }
+        "409": { description: "contact_exists (address already saved) or contact_limit" }
+  /address-book/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    put:
+      summary: Update a contact
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ContactInput" } } } }
+      responses: { "200": { description: OK }, "404": { description: Not a contact of this user }, "409": { description: contact_exists } }
+    delete:
+      summary: Delete a contact
+      responses: { "204": { description: Deleted }, "404": { description: Not a contact of this user } }
   /messages:
     get:
       summary: List messages (folder, unified or starred view)

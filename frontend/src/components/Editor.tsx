@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { api, qs } from '../api'
 import { t, type Key } from '../i18n'
 import type { Address } from '../types'
 import { formatAddress, parseAddresses } from '../util'
+import { ContactPicker } from './Contacts'
 import { Icon } from './Icons'
 
 // Sizes use <font size>, understood by every mail client (Outlook included).
@@ -200,8 +202,9 @@ export function RichEditor({ initialHTML, onChange, autoFocus, onFiles }: { init
 export function AddressField({ label, value, onChange, autoFocus }: { label: string; value: Address[]; onChange: (v: Address[]) => void; autoFocus?: boolean }) {
   const [text, setText] = useState('')
   const [invalid, setInvalid] = useState('')
-  const [suggestions, setSuggestions] = useState<{ name?: string; addr: string }[]>([])
+  const [suggestions, setSuggestions] = useState<{ name?: string; addr: string; saved?: boolean }[]>([])
   const [active, setActive] = useState(0)
+  const [picker, setPicker] = useState(false)
   const seq = useRef(0)
 
   useEffect(() => {
@@ -213,7 +216,7 @@ export function AddressField({ label, value, onChange, autoFocus }: { label: str
     const s = ++seq.current
     const h = setTimeout(() => {
       api
-        .get<{ items: { name?: string; addr: string }[] }>('/contacts' + qs({ q }))
+        .get<{ items: { name?: string; addr: string; saved?: boolean }[] }>('/contacts' + qs({ q }))
         .then((r) => {
           if (s === seq.current) {
             setSuggestions(r.items.filter((c) => !value.some((v) => v.addr.toLowerCase() === c.addr.toLowerCase())))
@@ -291,13 +294,29 @@ export function AddressField({ label, value, onChange, autoFocus }: { label: str
           <div className="suggestions" role="listbox">
             {suggestions.map((c, i) => (
               <button key={c.addr} type="button" role="option" aria-selected={i === active} className={i === active ? 'active' : ''} onMouseDown={(e) => { e.preventDefault(); pick(c) }}>
-                {formatAddress(c)}
+                {c.saved && <Icon name="book" size={13} className="muted" title={t('contacts.saved')} />} {formatAddress(c)}
               </button>
             ))}
           </div>
         )}
       </div>
+      <button type="button" className="icon-btn small address-book-btn" title={t('contacts.pickTitle')} aria-label={t('contacts.pickTitle')} onClick={() => setPicker(true)}>
+        <Icon name="book" size={16} />
+      </button>
       {invalid && <div className="field-error">{invalid}</div>}
+      {picker &&
+        createPortal(
+          <ContactPicker
+            exclude={value}
+            onClose={() => setPicker(false)}
+            onPick={(list) => {
+              const merged = [...value]
+              for (const a of list) if (!merged.some((x) => x.addr.toLowerCase() === a.addr.toLowerCase())) merged.push(a)
+              onChange(merged)
+            }}
+          />,
+          document.body,
+        )}
     </div>
   )
 }

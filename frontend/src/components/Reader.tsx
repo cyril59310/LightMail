@@ -5,6 +5,7 @@ import { t } from '../i18n'
 import { openCompose, useStore } from '../store'
 import type { Folder, MessageDetail } from '../types'
 import { accountColor, accountLabel, displayName, folderLabel, formatAddress, formatSize, fullDate, shortDate } from '../util'
+import { saveToContacts } from './Contacts'
 import { Modal } from './Dialogs'
 import { Icon } from './Icons'
 
@@ -148,6 +149,11 @@ export function Reader({ messageId, onAct, onClose, onOpenMessage }: Props) {
           <div className="meta-lines">
             <div>
               <strong>{displayName(m.from)}</strong> <span className="muted small">&lt;{m.from.addr}&gt;</span>
+              {m.from.addr && (
+                <button className="icon-btn small inline-action" title={t('contacts.saveSender')} aria-label={t('contacts.saveSender')} onClick={() => void saveToContacts(m.from)}>
+                  <Icon name="userPlus" size={14} />
+                </button>
+              )}
             </div>
             <div className="muted small">
               {t('read.to')} : {m.to.map(formatAddress).join(', ') || '—'}

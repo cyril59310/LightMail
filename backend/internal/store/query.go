@@ -378,6 +378,8 @@ type Contact struct {
 	Name  string `json:"name,omitempty"`
 	Addr  string `json:"addr"`
 	Count int    `json:"count"`
+	// Saved marks an entry of the user's address book.
+	Saved bool `json:"saved,omitempty"`
 }
 
 // Contacts returns frequent correspondents matching prefix: senders of

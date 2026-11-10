@@ -8,7 +8,7 @@
 - **WebAuthn / clés de sécurité** pour l'interface (la double authentification se fait par TOTP).
 - **Filtres et règles de classement**, étiquettes locales, réponses automatiques.
 - **Vue en conversations dans la liste** : les fils sont détectés (Message-ID, In-Reply-To, References) et affichés dans le lecteur, mais la liste reste par message.
-- **Contacts et calendriers** (CardDAV/CalDAV).
+- **Synchronisation des contacts et calendriers** (CardDAV/CalDAV). LightMail a un carnet d'adresses local, propre à chaque utilisateur, mais il n'est ni synchronisé avec un serveur ni importable/exportable (vCard).
 - **Mode hors ligne / PWA**, notifications Web Push (les notifications navigateur ne fonctionnent qu'onglet ouvert).
 - **S/MIME, PGP**.
 - **Images collées dans l'éditeur**, glisser-déposer de fichiers dans le compositeur (le bouton *Joindre* fonctionne).

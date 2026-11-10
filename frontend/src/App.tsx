@@ -7,6 +7,7 @@ import { loadAccounts, loadAll, loadFolders, setState, toast, useStore } from '.
 import type { Me } from './types'
 import { AccountWizard } from './components/AccountWizard'
 import { ComposerHost } from './components/Composer'
+import { ContactsPage } from './components/Contacts'
 import { ConfirmHost, Toasts } from './components/Dialogs'
 import { Icon } from './components/Icons'
 import { Login } from './components/Login'
@@ -134,6 +135,7 @@ function Shell({ onLogout }: { onLogout: () => void }) {
   if (view === 'settings') main = <SettingsPage />
   else if (view === 'add-account') main = <AccountWizard />
   else if (view === 'outbox') main = <OutboxView />
+  else if (view === 'contacts') main = <ContactsPage />
   else if (accounts.length === 0 && view !== 'oauth-result') main = <Welcome />
   else main = <MailView />
 

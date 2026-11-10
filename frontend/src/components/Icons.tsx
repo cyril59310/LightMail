@@ -52,6 +52,8 @@ const paths: Record<string, string> = {
   down: 'M12 5v14 M19 12l-7 7-7-7',
   chevron: 'M6 9l6 6 6-6',
   sort: 'M7 20V4 M3 8l4-4 4 4 M17 4v16 M13 16l4 4 4-4',
+  book: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20 M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z',
+  userPlus: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M20 8v6 M23 11h-6',
   grip: 'M9 6h.01 M15 6h.01 M9 12h.01 M15 12h.01 M9 18h.01 M15 18h.01',
 }
 

@@ -161,6 +161,7 @@ export function Sidebar({ onNavigate, onLogout }: { onNavigate?: () => void; onL
       {accounts.length === 0 && <p className="muted small pad">{t('acct.none')}</p>}
 
       <div className="nav-footer">
+        <NavLink to="contacts" icon="book" label={t('nav.contacts')} active={cur === 'contacts'} onNavigate={onNavigate} />
         <NavLink to="add-account" icon="plus" label={t('nav.addAccount')} active={cur === 'add-account'} onNavigate={onNavigate} />
         <NavLink to="settings/general" icon="settings" label={t('nav.settings')} active={route.path[0] === 'settings'} onNavigate={onNavigate} />
         <button className="nav-item" onClick={onLogout}>

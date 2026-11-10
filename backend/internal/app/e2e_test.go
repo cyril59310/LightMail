@@ -177,6 +177,7 @@ func TestAllPrivateRoutesRequireAuth(t *testing.T) {
 		{"GET", "/api/v1/settings"}, {"PUT", "/api/v1/settings"}, {"POST", "/api/v1/branding/logo"}, {"DELETE", "/api/v1/branding/logo"}, {"GET", "/api/v1/status"}, {"GET", "/api/v1/metrics"},
 		{"POST", "/api/v1/oauth/google/start"}, {"GET", "/api/v1/oauth/google/callback?code=x&state=y"},
 		{"POST", "/api/v1/auth/logout-all"}, {"POST", "/api/v1/auth/password"}, {"GET", "/api/v1/auth/2fa"}, {"POST", "/api/v1/auth/2fa/setup"}, {"POST", "/api/v1/auth/2fa/enable"}, {"POST", "/api/v1/auth/2fa/disable"}, {"POST", "/api/v1/auth/2fa/recovery"}, {"GET", "/api/v1/counters"}, {"GET", "/api/v1/contacts?q=ab"},
+		{"GET", "/api/v1/address-book"}, {"POST", "/api/v1/address-book"}, {"PUT", "/api/v1/address-book/1"}, {"DELETE", "/api/v1/address-book/1"},
 	}
 	for _, r := range routes {
 		resp, _ := c.do(r[0], r[1], map[string]string{})
@@ -708,6 +709,84 @@ func TestTwoFactorLoginOverHTTP(t *testing.T) {
 	}
 	if resp := e.client().login("admin", adminPassword); resp.StatusCode != 200 {
 		t.Fatalf("login after disabling: %d", resp.StatusCode)
+	}
+}
+
+func TestAddressBookIsolatedPerUser(t *testing.T) {
+	e := startE2E(t)
+	if _, err := e.app.DB.CreateUser(context.Background(), "bob", mustHash(t), false); err != nil {
+		t.Fatal(err)
+	}
+	admin := e.client()
+	admin.login("admin", adminPassword)
+	bob := e.client()
+	if resp := bob.login("bob", "mallory-password-1"); resp.StatusCode != 200 {
+		t.Fatalf("bob login: %d", resp.StatusCode)
+	}
+	type contact struct {
+		ID    int64
+		Name  string
+		Email string
+		Notes string
+	}
+
+	resp, b := admin.do("POST", "/api/v1/address-book", map[string]string{"name": "Zoé Martin", "email": "zoe@example.org", "notes": "comptable"})
+	if resp.StatusCode != 201 {
+		t.Fatalf("create: %d %s", resp.StatusCode, b)
+	}
+	zoe := decode[contact](t, b)
+	if resp, b := admin.do("POST", "/api/v1/address-book", map[string]string{"email": "ZOE@example.org"}); resp.StatusCode != 409 || !strings.Contains(string(b), "contact_exists") {
+		t.Fatalf("duplicate address accepted: %d %s", resp.StatusCode, b)
+	}
+	for _, bad := range []string{"", "not-an-address", "a@b.c\r\nBcc: x@y.z", "Zoé <zoe@example.org>"} {
+		if resp, _ := admin.do("POST", "/api/v1/address-book", map[string]string{"email": bad}); resp.StatusCode != 400 {
+			t.Errorf("invalid address %q accepted: %d", bad, resp.StatusCode)
+		}
+	}
+	// The same address may be saved by another user.
+	if resp, b := bob.do("POST", "/api/v1/address-book", map[string]string{"name": "Zoé (Bob)", "email": "zoe@example.org"}); resp.StatusCode != 201 {
+		t.Fatalf("bob create: %d %s", resp.StatusCode, b)
+	}
+
+	// Bob sees only his own contact and cannot touch the admin's.
+	_, b = bob.do("GET", "/api/v1/address-book", nil)
+	list := decode[struct{ Items []contact }](t, b)
+	if len(list.Items) != 1 || list.Items[0].Name != "Zoé (Bob)" {
+		t.Fatalf("bob sees: %s", b)
+	}
+	path := fmt.Sprintf("/api/v1/address-book/%d", zoe.ID)
+	if resp, _ := bob.do("PUT", path, map[string]string{"email": "hijack@example.org"}); resp.StatusCode != 404 {
+		t.Fatalf("bob updated the admin's contact: %d", resp.StatusCode)
+	}
+	if resp, _ := bob.do("DELETE", path, nil); resp.StatusCode != 404 {
+		t.Fatalf("bob deleted the admin's contact: %d", resp.StatusCode)
+	}
+	if _, b := bob.do("GET", "/api/v1/contacts?q=zo", nil); strings.Contains(string(b), "comptable") || strings.Count(string(b), "zoe@example.org") != 1 {
+		t.Fatalf("bob autocompletion: %s", b)
+	}
+
+	// Admin: search, autocompletion, update, delete.
+	if _, b := admin.do("GET", "/api/v1/address-book?q=mart", nil); decode[struct{ Items []contact }](t, b).Items[0].ID != zoe.ID {
+		t.Fatalf("search: %s", b)
+	}
+	_, b = admin.do("GET", "/api/v1/contacts?q=zo", nil)
+	ac := decode[struct {
+		Items []struct {
+			Name, Addr string
+			Saved      bool
+		}
+	}](t, b)
+	if len(ac.Items) != 1 || !ac.Items[0].Saved || ac.Items[0].Name != "Zoé Martin" {
+		t.Fatalf("autocompletion: %s", b)
+	}
+	if resp, b := admin.do("PUT", path, map[string]string{"name": "Zoé M.", "email": "zoe.m@example.org"}); resp.StatusCode != 200 || decode[contact](t, b).Email != "zoe.m@example.org" {
+		t.Fatalf("update: %d %s", resp.StatusCode, b)
+	}
+	if resp, _ := admin.do("DELETE", path, nil); resp.StatusCode != 204 {
+		t.Fatalf("delete: %d", resp.StatusCode)
+	}
+	if _, b := admin.do("GET", "/api/v1/address-book", nil); len(decode[struct{ Items []contact }](t, b).Items) != 0 {
+		t.Fatalf("not deleted: %s", b)
 	}
 }
 

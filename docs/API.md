@@ -38,7 +38,8 @@ curl -s -b ck.txt -X POST -H 'Content-Type: application/json' -H "Origin: https:
 | OAuth2 | `POST /oauth/{provider}/start`, `GET /oauth/{provider}/callback` |
 | Dossiers | `GET/POST /folders`, `PATCH/DELETE /folders/{id}`, `GET /counters` |
 | Messages | `GET /messages`, `GET /search`, `GET /messages/{id}`, `/body.html`, `/raw`, `/headers`, `/attachments/{att}`, `POST /messages/actions`, `POST /messages/{id}/edit-draft` |
-| Rédaction | `POST /uploads`, `DELETE /uploads/{id}`, `GET/POST /drafts`, `GET/PUT/DELETE /drafts/{id}`, `POST /messages/send`, `GET /contacts` |
+| Rédaction | `POST /uploads`, `DELETE /uploads/{id}`, `GET/POST /drafts`, `GET/PUT/DELETE /drafts/{id}`, `POST /messages/send`, `GET /contacts` (autocomplétion : contacts enregistrés d'abord, marqués `saved`) |
+| Carnet d'adresses (propre à chaque utilisateur) | `GET/POST /address-book` (`{"name", "email", "notes"}`, `409 contact_exists`), `PUT/DELETE /address-book/{id}` (`404` pour le contact d'un autre utilisateur) |
 | File d'envoi | `GET /outbox`, `POST /outbox/{id}/cancel`, `POST /outbox/{id}/retry`, `DELETE /outbox/{id}` |
 | Divers | `GET /notifications`, `POST /notifications/read`, `GET /events`, `GET/PUT /settings`, `GET /branding/logo`, `GET /metrics` (jeton), `GET /health` |
 | Administration (administrateurs, sinon `403`) | `GET /status`, `GET /metrics` (par session), `POST/DELETE /branding/logo`, `GET/POST /users` (création : `{"username", "password", "isAdmin"}`, `409 username_taken`), `PATCH /users/{id}` `{"isAdmin": bool}`, `DELETE /users/{id}` (pas soi-même ; supprime ses comptes mail et données locales) ; `409 last_admin` protège le dernier administrateur |

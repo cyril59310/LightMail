@@ -1689,6 +1689,77 @@ legend {
   padding: 0;
   max-width: 820px;
 }
+
+/* ---- address book ---- */
+.page-head h1 {
+  margin: 0;
+}
+.contacts-search {
+  width: 100%;
+  max-width: 820px;
+  margin: 8px 0 12px;
+}
+.contact-list,
+.contact-pick-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.contact-list {
+  max-width: 820px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.contact-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.contact-item .avatar {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.contact-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.contact-notes {
+  white-space: pre-wrap;
+  color: var(--muted);
+}
+.contact-actions {
+  flex: none;
+}
+.contact-pick-list {
+  max-height: min(50vh, 420px);
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+.contact-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.contact-pick:hover {
+  background: var(--hover);
+}
+.contact-pick.disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.address-book-btn {
+  flex: none;
+  color: var(--muted);
+}
+.inline-action {
+  vertical-align: middle;
+  margin-left: 4px;
+}
 .outbox-item {
   display: flex;
   flex-direction: column;

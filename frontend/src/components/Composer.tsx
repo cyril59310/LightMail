@@ -144,7 +144,7 @@ export function Composer({ req, onClose }: { req: ComposeRequest; onClose: () =>
             keepOrig: req.mode === 'forward' && visibleAtts > 0, origAttachments: req.mode === 'forward' ? visibleAtts : 0,
           })
         }
-        const to = req.to ? [{ addr: req.to }] : []
+        const to = req.to ? [{ addr: req.to, name: req.toName }] : []
         finish({ ...base, to, html: `<p><br></p>${signatureBlock(defaultAcct)}` })
       } catch (e) {
         if (!cancelled) setError(e instanceof ApiError ? e.message : t('err.network'))
