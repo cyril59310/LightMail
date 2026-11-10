@@ -992,6 +992,10 @@ input[type='checkbox'] {
   overflow: auto;
   padding: 4px;
 }
+.menu.align-right {
+  left: auto;
+  right: 0;
+}
 .menu button {
   display: block;
   width: 100%;

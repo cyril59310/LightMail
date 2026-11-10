@@ -4,7 +4,7 @@ import { confirmAction, optimisticPatch, runAction, type Action } from '../actio
 import { t } from '../i18n'
 import { openCompose, useStore } from '../store'
 import type { Account, Message, Page } from '../types'
-import { accountColor, displayName, shortDate } from '../util'
+import { accountColor, displayName, folderLabel, shortDate } from '../util'
 import { Icon } from './Icons'
 
 export type ListSpec =
@@ -50,6 +50,8 @@ export function MessageList({ spec, selectedId, onSelect, handleRef, title, show
   const settings = useStore((s) => s.settings)
   const listVersion = useStore((s) => s.listVersion)
   const accounts = useStore((s) => s.accounts)
+  const folders = useStore((s) => s.folders)
+  const [moveOpen, setMoveOpen] = useState(false)
   const pageSize = Number(settings.pageSize) || 50
   const compact = settings.density === 'compact'
   const rowH = compact ? 44 : 76
@@ -59,6 +61,9 @@ export function MessageList({ spec, selectedId, onSelect, handleRef, title, show
   const [error, setError] = useState('')
   const [warning, setWarning] = useState('')
   const [checked, setChecked] = useState<Set<number>>(new Set())
+  useEffect(() => {
+    if (checked.size === 0) setMoveOpen(false)
+  }, [checked.size])
   const [filters, setFilters] = useState({ unread: false, att: false })
   const [scrollTop, setScrollTop] = useState(0)
   const [viewH, setViewH] = useState(600)
@@ -187,6 +192,12 @@ export function MessageList({ spec, selectedId, onSelect, handleRef, title, show
   const checkedMsgs = items.filter((m) => checked.has(m.id))
   const anyUnread = checkedMsgs.some((m) => !m.seen)
   const anyUnstarred = checkedMsgs.some((m) => !m.flagged)
+  // Moving is only possible within one account (IMAP MOVE stays on the same server).
+  const moveAccountId = checkedMsgs.length && checkedMsgs.every((m) => m.accountId === checkedMsgs[0].accountId) ? checkedMsgs[0].accountId : null
+  const moveFolders =
+    moveAccountId === null
+      ? []
+      : folders.filter((f) => f.accountId === moveAccountId && f.selectable && !checkedMsgs.every((m) => m.folderId === f.id))
 
   return (
     <section className="list-pane" aria-label={title}>
@@ -201,6 +212,26 @@ export function MessageList({ spec, selectedId, onSelect, handleRef, title, show
             <button className="icon-btn" title={t('act.trash')} onClick={() => act('trash')}>
               <Icon name="trash" />
             </button>
+            <div className="menu-wrap">
+              <button
+                className="icon-btn"
+                title={moveAccountId === null ? t('act.moveMultiAccount') : t('act.move')}
+                onClick={() => setMoveOpen((v) => !v)}
+                aria-expanded={moveOpen}
+                disabled={moveAccountId === null || !moveFolders.length}
+              >
+                <Icon name="folder" />
+              </button>
+              {moveOpen && moveAccountId !== null && (
+                <div className="menu align-right" role="menu" onMouseLeave={() => setMoveOpen(false)}>
+                  {moveFolders.map((f) => (
+                    <button key={f.id} role="menuitem" onClick={() => { setMoveOpen(false); void act('move', undefined, f.id) }}>
+                      {folderLabel(f)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button className="icon-btn" title={anyUnread ? t('act.markRead') : t('act.markUnread')} onClick={() => act(anyUnread ? 'read' : 'unread')}>
               <Icon name={anyUnread ? 'mailOpen' : 'mail'} />
             </button>
