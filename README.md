@@ -1,5 +1,9 @@
 # LightMail
 
+<img width="1920" height="914" alt="image" src="https://github.com/user-attachments/assets/cc9f6d52-307b-455c-8291-037004e84394" />
+
+## C'est quoi ?
+
 Client mail **léger, multi-comptes et auto-hébergeable** : un binaire Go unique (interface React embarquée), une base SQLite, une image Docker de ~28 Mo qui tient dans une vingtaine de Mo de RAM au repos.
 
 - IMAP (TLS / STARTTLS obligatoires) et SMTP (465 / 587), synchronisation incrémentale (UID, UIDVALIDITY, CONDSTORE), IMAP IDLE
