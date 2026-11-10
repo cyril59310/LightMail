@@ -131,6 +131,9 @@ export function Reader({ messageId, onAct, onClose, onOpenMessage }: Props) {
         <a className="icon-btn" title={t('act.exportEml')} href={`/api/v1/messages/${m.id}/raw`} download>
           <Icon name="download" />
         </a>
+        <button className="icon-btn desktop-only" title={t('act.closeMessage')} aria-label={t('act.closeMessage')} onClick={onClose}>
+          <Icon name="x" />
+        </button>
       </div>
 
       <div className="reader-scroll">
