@@ -12,7 +12,7 @@
 | Santé HTTP | `curl -s http://127.0.0.1:8080/api/v1/health` |
 | Consommation | `docker stats lightmail` |
 | Métriques Prometheus | `curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/api/v1/metrics` (`LIGHTMAIL_METRICS_TOKEN`) |
-| État détaillé (connecté) | *Paramètres → État du système* ou `GET /api/v1/status` |
+| État détaillé (administrateur) | *Paramètres → À propos* ou `GET /api/v1/status` |
 | Sauvegarde / vérification | `make backup`, `make verify-backup FILE=…` |
 | Mot de passe admin oublié | `docker compose exec -T lightmail lightmail user set-password admin <<< 'nouveau-mot-de-passe'` |
 | Schéma de base | `docker compose exec lightmail lightmail migrate` |

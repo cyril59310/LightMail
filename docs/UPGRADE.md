@@ -41,7 +41,7 @@ docker compose exec lightmail lightmail version
 docker compose exec lightmail lightmail migrate     # affiche la version du schéma
 ```
 
-La version est aussi visible dans *Paramètres → État du système*.
+La version est aussi visible dans *Paramètres → À propos*.
 
 ## Image multi-architecture
 

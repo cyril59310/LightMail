@@ -44,7 +44,7 @@ Le serveur de test est local : les durées n'incluent **ni la latence Internet n
 
 ### Test d'interface de bout en bout (Chrome headless, playwright-core)
 
-Script exécuté contre le binaire final et les serveurs `devmail` (2 comptes, 400 messages chacun) : connexion (échec puis succès) → ajout de **deux comptes via l'assistant** (test de connexion, certificat CA) → boîte unifiée → recherche `has:attachment` → lecture d'un message piégé (bannière « contenu distant bloqué », **absence de l'URL de pistage dans l'iframe vérifiée**) → raccourcis clavier `j` et `s` → rédaction (`c`), destinataires en pastilles, envoi, toast « Message envoyé » → dossier Envoyés → page État du système → thème sombre → **mobile 390 × 844** (liste, lecteur, retour, tiroir de navigation, **aucun débordement horizontal**). Aucune erreur JavaScript, hormis le 401 attendu de la tentative de connexion volontairement erronée.
+Script exécuté contre le binaire final et les serveurs `devmail` (2 comptes, 400 messages chacun) : connexion (échec puis succès) → ajout de **deux comptes via l'assistant** (test de connexion, certificat CA) → boîte unifiée → recherche `has:attachment` → lecture d'un message piégé (bannière « contenu distant bloqué », **absence de l'URL de pistage dans l'iframe vérifiée**) → raccourcis clavier `j` et `s` → rédaction (`c`), destinataires en pastilles, envoi, toast « Message envoyé » → dossier Envoyés → page À propos (état du système) → thème sombre → **mobile 390 × 844** (liste, lecteur, retour, tiroir de navigation, **aucun débordement horizontal**). Aucune erreur JavaScript, hormis le 401 attendu de la tentative de connexion volontairement erronée.
 
 ## 2. Performances
 

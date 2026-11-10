@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { ApiError, api } from '../api'
 import { setLanguage, t } from '../i18n'
 import { href, navigate, useRoute } from '../router'
@@ -14,7 +14,8 @@ import { BrandMark, Icon } from './Icons'
 
 const tabs = ['general', 'accounts', 'notifications', 'security', 'users', 'about'] as const
 // Instance-wide tabs, reserved to administrators.
-const adminTabs: readonly string[] = ['users', 'about']
+// "about" is visible to everyone but shows the instance status to administrators only.
+const adminTabs: readonly string[] = ['users']
 
 export function SettingsPage() {
   const route = useRoute()
@@ -818,18 +819,59 @@ interface Status {
   keyId: string
 }
 
+const SOURCE_URL = 'https://github.com/cyril59310/LightMail'
+
+// Visible to every user: application name, developer and source code.
+// The instance status below is for administrators only (GET /status is admin-only).
 function About() {
+  const isAdmin = useStore((st) => !!st.me?.user?.isAdmin)
+  const version = useStore((st) => st.me?.version ?? '')
   const [s, setS] = useState<Status | null>(null)
   useEffect(() => {
+    if (!isAdmin) return
     const load = () => api.get<Status>('/status').then(setS).catch(() => {})
     void load()
     const h = setInterval(load, 5000)
     return () => clearInterval(h)
-  }, [])
-  if (!s) return <p className="muted">{t('app.loading')}</p>
+  }, [isAdmin])
+  const rows: [string, ReactNode][] = [
+    [t('about.app'), 'LightMail'],
+    [t('about.developer'), 'Cyril59310'],
+    [
+      t('about.source'),
+      <a href={SOURCE_URL} target="_blank" rel="noreferrer">
+        {SOURCE_URL.replace('https://', '')}
+      </a>,
+    ],
+    // Version from /auth/me (public); administrators also see the Go and schema versions.
+    [t('about.version'), isAdmin && s ? `${s.version} (${s.goVersion}, schema v${s.schemaVersion})` : version || '—'],
+  ]
+  if (isAdmin && s) rows.push(...statusRows(s))
+  return (
+    <div className="card">
+      <table className="kv">
+        <tbody>
+          {rows.map(([k, v]) => (
+            <tr key={k}>
+              <th>{k}</th>
+              <td>{v}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {isAdmin && !s && <p className="muted small">{t('app.loading')}</p>}
+      {isAdmin && (
+        <p className="muted small">
+          <a href="/api/v1/metrics" target="_blank" rel="noreferrer">/api/v1/metrics</a> · <a href="/api/v1/openapi.yaml" target="_blank" rel="noreferrer">OpenAPI</a>
+        </p>
+      )}
+    </div>
+  )
+}
+
+function statusRows(s: Status): [string, ReactNode][] {
   const rt = s.runtime
-  const rows: [string, string][] = [
-    [t('about.version'), `${s.version} (${s.goVersion}, schema v${s.schemaVersion})`],
+  return [
     [t('about.uptime'), `${Math.floor(rt.uptimeSeconds / 3600)} h ${Math.floor((rt.uptimeSeconds % 3600) / 60)} min`],
     [t('about.memory'), formatSize(rt.heapAllocBytes)],
     [t('about.sys'), formatSize(rt.sysBytes)],
@@ -843,21 +885,4 @@ function About() {
     [t('about.errors'), `${rt.imapErrors} / ${rt.smtpErrors}`],
     ['Key ID', s.keyId],
   ]
-  return (
-    <div className="card">
-      <table className="kv">
-        <tbody>
-          {rows.map(([k, v]) => (
-            <tr key={k}>
-              <th>{k}</th>
-              <td>{v}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="muted small">
-        <a href="/api/v1/metrics" target="_blank" rel="noreferrer">/api/v1/metrics</a> · <a href="/api/v1/openapi.yaml" target="_blank" rel="noreferrer">OpenAPI</a>
-      </p>
-    </div>
-  )
 }
