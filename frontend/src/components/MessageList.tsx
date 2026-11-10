@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ApiError, api, qs } from '../api'
-import { optimisticPatch, runAction, type Action } from '../actions'
+import { confirmAction, optimisticPatch, runAction, type Action } from '../actions'
 import { t } from '../i18n'
 import { openCompose, useStore } from '../store'
 import type { Account, Message, Page } from '../types'
@@ -123,6 +123,10 @@ export function MessageList({ spec, selectedId, onSelect, handleRef, title, show
     const targetIds = ids ?? [...checked]
     const targets = items.filter((m) => targetIds.includes(m.id))
     if (!targets.length) return
+    // Ask for confirmation first, so messages stay visible until the user confirms.
+    const resolved = await confirmAction(targets, action)
+    if (!resolved) return
+    action = resolved
     const before = items
     const op = optimisticPatch(action)
     const removing = op === 'remove'
@@ -131,14 +135,13 @@ export function MessageList({ spec, selectedId, onSelect, handleRef, title, show
       const idx = items.findIndex((m) => m.id === selectedId)
       nextSel = items.slice(idx + 1).find((m) => !targetIds.includes(m.id)) ?? items.slice(0, idx).reverse().find((m) => !targetIds.includes(m.id)) ?? null
     }
-    if (op && action !== 'delete') patch(targetIds, op)
-    const ok = await runAction(targets, action, folderId)
+    if (op) patch(targetIds, op)
+    const ok = await runAction(targets, action, folderId, { confirmed: true })
     if (ok.length < targets.length) {
       setItems(before) // revert on failure
       if (ok.length && op) patch(ok, op)
       return
     }
-    if (action === 'delete') patch(ok, 'remove')
     if (removing) {
       setChecked(new Set())
       if (selectedId && targetIds.includes(selectedId)) onSelect(nextSel)
