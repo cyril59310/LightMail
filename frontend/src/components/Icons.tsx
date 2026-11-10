@@ -51,6 +51,7 @@ const paths: Record<string, string> = {
   up: 'M12 19V5 M5 12l7-7 7 7',
   down: 'M12 5v14 M19 12l-7 7-7-7',
   chevron: 'M6 9l6 6 6-6',
+  sort: 'M7 20V4 M3 8l4-4 4 4 M17 4v16 M13 16l4 4 4-4',
   grip: 'M9 6h.01 M15 6h.01 M9 12h.01 M15 12h.01 M9 18h.01 M15 18h.01',
 }
 

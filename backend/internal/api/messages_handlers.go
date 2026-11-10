@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,22 +23,65 @@ import (
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 
-func parseCursor(s string) (int64, int64) {
-	d, id, ok := strings.Cut(s, ".")
+// A cursor is "<id>.<value>": the sort value of the last row, a number for
+// numeric sorts or base64url text for text sorts.
+func parseCursor(s, sort string) *store.Cursor {
+	id, v, ok := strings.Cut(s, ".")
 	if !ok {
-		return 0, 0
+		return nil
 	}
-	a, _ := strconv.ParseInt(d, 10, 64)
-	b, _ := strconv.ParseInt(id, 10, 64)
-	return a, b
+	c := &store.Cursor{}
+	var err error
+	if c.ID, err = strconv.ParseInt(id, 10, 64); err != nil {
+		return nil
+	}
+	if store.SortIsText(sort) {
+		b, err := base64.RawURLEncoding.DecodeString(v)
+		if err != nil {
+			return nil
+		}
+		c.Text = string(b)
+	} else if c.Num, err = strconv.ParseInt(v, 10, 64); err != nil {
+		return nil
+	}
+	return c
 }
 
-func cursorOf(msgs []*store.Message, limit int) string {
+func cursorOf(msgs []*store.Message, limit int, sort string) string {
 	if len(msgs) < limit || len(msgs) == 0 {
 		return ""
 	}
 	last := msgs[len(msgs)-1]
-	return itoa(last.Date) + "." + itoa(last.ID)
+	n, txt := store.SortValue(last, sort)
+	if store.SortIsText(sort) {
+		return itoa(last.ID) + "." + base64.RawURLEncoding.EncodeToString([]byte(txt))
+	}
+	return itoa(last.ID) + "." + itoa(n)
+}
+
+// listSort reads the sort and order query parameters into f.
+func listSort(w http.ResponseWriter, r *http.Request, f *store.MessageFilter) bool {
+	q := r.URL.Query()
+	f.Sort = q.Get("sort")
+	if !store.ValidSort(f.Sort) {
+		badRequest(w, "invalid sort")
+		return false
+	}
+	switch q.Get("order") {
+	case "", "desc":
+	case "asc":
+		f.Asc = true
+	default:
+		badRequest(w, "invalid order")
+		return false
+	}
+	if c := q.Get("cursor"); c != "" {
+		if f.Cursor = parseCursor(c, f.Sort); f.Cursor == nil {
+			badRequest(w, "invalid cursor")
+			return false
+		}
+	}
+	return true
 }
 
 func pageLimit(r *http.Request) int {
@@ -53,7 +97,9 @@ func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	u := userFrom(r)
 	f := store.MessageFilter{UserID: u.ID, AccountID: queryID(r, "accountId"), Limit: pageLimit(r)}
-	f.CursorDate, f.CursorID = parseCursor(q.Get("cursor"))
+	if !listSort(w, r, &f) {
+		return
+	}
 	switch view := q.Get("view"); view {
 	case "", "folder":
 		fid := queryID(r, "folderId")
@@ -100,7 +146,7 @@ func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": msgs, "nextCursor": cursorOf(msgs, f.Limit)})
+	writeJSON(w, http.StatusOK, map[string]any{"items": msgs, "nextCursor": cursorOf(msgs, f.Limit, f.Sort)})
 }
 
 func (s *Server) userLocation(ctx context.Context, userID int64) *time.Location {
@@ -126,7 +172,9 @@ func (s *Server) searchMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	parsed := search.Parse(raw, s.userLocation(r.Context(), u.ID))
 	f := store.MessageFilter{UserID: u.ID, AccountID: queryID(r, "accountId"), FolderID: queryID(r, "folderId"), Limit: pageLimit(r)}
-	f.CursorDate, f.CursorID = parseCursor(qs.Get("cursor"))
+	if !listSort(w, r, &f) {
+		return
+	}
 	if parsed.Account != "" && f.AccountID == 0 {
 		if list, err := s.DB.ListAccounts(r.Context(), u.ID); err == nil {
 			for _, a := range list {
@@ -169,7 +217,7 @@ func (s *Server) searchMessages(w http.ResponseWriter, r *http.Request) {
 			}
 			msgs = kept
 		}
-		sortByDate(msgs)
+		store.SortMessages(msgs, f.Sort, f.Asc)
 		writeJSON(w, http.StatusOK, map[string]any{"items": msgs, "nextCursor": "", "server": true, "warning": parsed.Describe()})
 		return
 	}
@@ -179,15 +227,7 @@ func (s *Server) searchMessages(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": msgs, "nextCursor": cursorOf(msgs, f.Limit), "warning": parsed.Describe()})
-}
-
-func sortByDate(m []*store.Message) {
-	for i := 1; i < len(m); i++ {
-		for j := i; j > 0 && (m[j].Date > m[j-1].Date || m[j].Date == m[j-1].Date && m[j].ID > m[j-1].ID); j-- {
-			m[j], m[j-1] = m[j-1], m[j]
-		}
-	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": msgs, "nextCursor": cursorOf(msgs, f.Limit, f.Sort), "warning": parsed.Describe()})
 }
 
 func (s *Server) messageParam(w http.ResponseWriter, r *http.Request) (*store.Message, bool) {

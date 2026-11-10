@@ -35,7 +35,17 @@ components:
     cursor:
       name: cursor
       in: query
+      description: nextCursor of the previous page, for the same sort and order
       schema: { type: string }
+    sort:
+      name: sort
+      in: query
+      description: "date = Date header, arrival = reception date on the server, to/cc = first recipient"
+      schema: { type: string, enum: [date, arrival, subject, from, to, cc, size], default: date }
+    order:
+      name: order
+      in: query
+      schema: { type: string, enum: [asc, desc], default: desc }
     limit:
       name: limit
       in: query
@@ -370,6 +380,8 @@ paths:
         - { name: accountId, in: query, schema: { type: integer } }
         - { name: unread, in: query, schema: { type: string, enum: ["1"] } }
         - { name: attachments, in: query, schema: { type: string, enum: ["1"] } }
+        - { $ref: "#/components/parameters/sort" }
+        - { $ref: "#/components/parameters/order" }
         - { $ref: "#/components/parameters/cursor" }
         - { $ref: "#/components/parameters/limit" }
       responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/MessagePage" } } } } }
@@ -381,6 +393,8 @@ paths:
         - { name: folderId, in: query, schema: { type: integer } }
         - { name: accountId, in: query, schema: { type: integer } }
         - { name: server, in: query, schema: { type: string, enum: ["1"] } }
+        - { $ref: "#/components/parameters/sort" }
+        - { $ref: "#/components/parameters/order" }
         - { $ref: "#/components/parameters/cursor" }
         - { $ref: "#/components/parameters/limit" }
       responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/MessagePage" } } } } }

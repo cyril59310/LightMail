@@ -2,9 +2,9 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { ApiError, api, qs } from '../api'
 import { confirmAction, optimisticPatch, runAction, type Action } from '../actions'
 import { t } from '../i18n'
-import { openCompose, useStore } from '../store'
+import { openCompose, saveSettings, setState, toast, useStore } from '../store'
 import type { Account, Message, Page } from '../types'
-import { accountColor, displayName, folderLabel, shortDate } from '../util'
+import { accountColor, displayName, folderLabel, formatSize, shortDate } from '../util'
 import { Icon } from './Icons'
 
 export type ListSpec =
@@ -13,8 +13,15 @@ export type ListSpec =
   | { kind: 'folder'; folderId: number }
   | { kind: 'search'; q: string; folderId?: number; server?: boolean }
 
-function specURL(spec: ListSpec, limit: number, cursor: string, filters: { unread: boolean; att: boolean }) {
-  const f = { unread: filters.unread ? 1 : undefined, attachments: filters.att ? 1 : undefined, limit, cursor }
+export const SORT_KEYS = ['arrival', 'date', 'subject', 'from', 'to', 'cc', 'size'] as const
+export type SortKey = (typeof SORT_KEYS)[number]
+interface Sort {
+  by: SortKey
+  order: 'asc' | 'desc'
+}
+
+function specURL(spec: ListSpec, limit: number, cursor: string, filters: { unread: boolean; att: boolean }, sort: Sort) {
+  const f = { unread: filters.unread ? 1 : undefined, attachments: filters.att ? 1 : undefined, sort: sort.by, order: sort.order, limit, cursor }
   switch (spec.kind) {
     case 'unified':
       return '/messages' + qs({ view: 'unified', role: spec.role, ...f })
@@ -26,7 +33,7 @@ function specURL(spec: ListSpec, limit: number, cursor: string, filters: { unrea
       let q = spec.q
       if (filters.unread) q += ' is:unread'
       if (filters.att) q += ' has:attachment'
-      return '/search' + qs({ q, folderId: spec.folderId, server: spec.server ? 1 : undefined, limit, cursor })
+      return '/search' + qs({ q, folderId: spec.folderId, server: spec.server ? 1 : undefined, sort: sort.by, order: sort.order, limit, cursor })
     }
   }
 }
@@ -52,6 +59,18 @@ export function MessageList({ spec, selectedId, onSelect, handleRef, title, show
   const accounts = useStore((s) => s.accounts)
   const folders = useStore((s) => s.folders)
   const [moveOpen, setMoveOpen] = useState(false)
+  const [sortOpen, setSortOpen] = useState(false)
+  const sortBy: SortKey = (SORT_KEYS as readonly string[]).includes(settings.sortBy) ? (settings.sortBy as SortKey) : 'date'
+  const sortOrder = settings.sortOrder === 'asc' ? 'asc' : 'desc'
+  const sort = useMemo<Sort>(() => ({ by: sortBy, order: sortOrder }), [sortBy, sortOrder])
+  const changeSort = (patch: { sortBy?: SortKey; sortOrder?: 'asc' | 'desc' }) => {
+    const previous = { sortBy: settings.sortBy, sortOrder: settings.sortOrder }
+    setState((s) => ({ settings: { ...s.settings, ...patch } }))
+    saveSettings(patch).catch((e) => {
+      setState((s) => ({ settings: { ...s.settings, ...previous } }))
+      toast(e instanceof ApiError ? e.message : t('err.network'), 'error')
+    })
+  }
   const pageSize = Number(settings.pageSize) || 50
   const compact = settings.density === 'compact'
   const rowH = compact ? 44 : 76
@@ -81,7 +100,7 @@ export function MessageList({ spec, selectedId, onSelect, handleRef, title, show
       try {
         // On refresh, reload as many rows as currently shown (bounded).
         const limit = reset && keepScroll ? Math.min(200, Math.max(pageSize, items.length)) : pageSize
-        const r = await api.get<Page<Message>>(specURL(spec, limit, reset ? '' : cursor, filters))
+        const r = await api.get<Page<Message>>(specURL(spec, limit, reset ? '' : cursor, filters, sort))
         if (seq !== loadSeq.current) return
         setItems((prev) => (reset ? r.items : [...prev, ...r.items.filter((m) => !prev.some((p) => p.id === m.id))]))
         setCursor(r.nextCursor ?? '')
@@ -96,10 +115,10 @@ export function MessageList({ spec, selectedId, onSelect, handleRef, title, show
         if (seq === loadSeq.current) setLoading(false)
       }
     },
-    [specKey, cursor, pageSize, filters, items.length],
+    [specKey, cursor, pageSize, filters, sort, items.length],
   )
 
-  useEffect(() => void load(true), [specKey, pageSize, filters])
+  useEffect(() => void load(true), [specKey, pageSize, filters, sort])
   // Live refresh on server events, keeping position.
   const firstVersion = useRef(listVersion)
   useEffect(() => {
@@ -254,6 +273,33 @@ export function MessageList({ spec, selectedId, onSelect, handleRef, title, show
             <button className={'chip' + (filters.att ? ' on' : '')} onClick={() => setFilters((f) => ({ ...f, att: !f.att }))} title={t('list.attachmentsOnly')}>
               <Icon name="paperclip" size={14} />
             </button>
+            <div className="menu-wrap">
+              <button
+                className="icon-btn"
+                title={t('sort.title') + ' : ' + t(`sort.${sortBy}`) + ' (' + t(`sort.${sortOrder}`) + ')'}
+                onClick={() => setSortOpen((v) => !v)}
+                aria-expanded={sortOpen}
+              >
+                <Icon name="sort" />
+              </button>
+              {sortOpen && (
+                <div className="menu align-right" role="menu" onMouseLeave={() => setSortOpen(false)}>
+                  <div className="menu-label">{t('sort.by')}</div>
+                  {SORT_KEYS.map((k) => (
+                    <button key={k} role="menuitemradio" aria-checked={sortBy === k} className={sortBy === k ? 'on' : ''} onClick={() => changeSort({ sortBy: k })}>
+                      {t(`sort.${k}`)}
+                    </button>
+                  ))}
+                  <div className="menu-sep" />
+                  <div className="menu-label">{t('sort.order')}</div>
+                  {(['asc', 'desc'] as const).map((o) => (
+                    <button key={o} role="menuitemradio" aria-checked={sortOrder === o} className={sortOrder === o ? 'on' : ''} onClick={() => changeSort({ sortOrder: o })}>
+                      {t(`sort.${o}`)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button className="icon-btn" onClick={() => void load(true)} title="↻" aria-label="refresh">
               <Icon name="refresh" className={loading ? 'spin' : ''} />
             </button>
@@ -286,6 +332,7 @@ export function MessageList({ spec, selectedId, onSelect, handleRef, title, show
               checked={checked.has(m.id)}
               account={multiAccount ? acctMap.get(m.accountId) : undefined}
               showRecipients={showRecipients}
+              sortBy={sortBy}
               onOpen={onSelect}
               onToggle={toggle}
               onAct={act}
@@ -307,12 +354,13 @@ interface RowProps {
   checked: boolean
   account?: Account
   showRecipients: boolean
+  sortBy: SortKey
   onOpen: (m: Message) => void
   onToggle: (id: number, range: boolean) => void
   onAct: (a: Action, ids: number[]) => void
 }
 
-const Row = memo(function Row({ m, top, height, compact, selected, checked, account, showRecipients, onOpen, onToggle, onAct }: RowProps) {
+const Row = memo(function Row({ m, top, height, compact, selected, checked, account, showRecipients, sortBy, onOpen, onToggle, onAct }: RowProps) {
   const who = showRecipients ? t('list.to', { who: m.to.map(displayName).join(', ') || '—' }) : displayName(m.from) || '—'
   return (
     <div
@@ -340,7 +388,8 @@ const Row = memo(function Row({ m, top, height, compact, selected, checked, acco
           {m.priority > 0 && <Icon name="alert" size={13} className="warn" title={t('read.priorityHigh')} />}
           {m.hasAttachments && <Icon name="paperclip" size={13} className="muted" />}
           {m.answered && <Icon name="reply" size={13} className="muted" />}
-          <span className="row-date">{shortDate(m.date)}</span>
+          {sortBy === 'size' && <span className="row-size muted small">{formatSize(m.size)}</span>}
+          <span className="row-date">{shortDate(sortBy === 'arrival' ? m.internalDate : m.date)}</span>
         </div>
         <div className="row-subject">
           {m.subject || t('list.noSubject')}

@@ -1009,6 +1009,31 @@ input[type='checkbox'] {
 .menu button:hover {
   background: var(--hover);
 }
+.menu button[role='menuitemradio'] {
+  position: relative;
+  padding-left: 26px;
+}
+.menu button[role='menuitemradio'].on {
+  font-weight: 600;
+}
+.menu button[role='menuitemradio'].on::before {
+  content: '✓';
+  position: absolute;
+  left: 9px;
+}
+.menu-label {
+  padding: 6px 10px 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+.row-size {
+  white-space: nowrap;
+}
 
 /* ---- composer ---- */
 .composer {

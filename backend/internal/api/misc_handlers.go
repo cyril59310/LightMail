@@ -161,6 +161,8 @@ var settingRules = map[string]*regexp.Regexp{
 	"readingPane":          regexp.MustCompile(`^(right|bottom|off)$`),
 	"threadView":           regexp.MustCompile(`^(true|false)$`),
 	"remoteImages":         regexp.MustCompile(`^(ask|always)$`),
+	"sortBy":               regexp.MustCompile(`^(date|arrival|subject|from|to|cc|size)$`),
+	"sortOrder":            regexp.MustCompile(`^(asc|desc)$`),
 }
 
 var notifyKinds = map[string]bool{"sync_error": true, "auth_error": true, "reauth_required": true, "token_expired": true,
@@ -259,6 +261,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		"markReadOnOpen": "true", "confirmDelete": "true", "confirmSendNoSubject": "true", "defaultFormat": "html",
 		"browserNotifications": "false", "undoSendSeconds": strconv.Itoa(int(s.Cfg.UndoSendDelay.Seconds())), "unifiedAccounts": "all",
 		"readingPane": "right", "threadView": "true", "remoteImages": "ask", "accountLayout": "{}", "serverPresets": "[]",
+		"sortBy": "date", "sortOrder": "desc",
 	}
 	for k, v := range st {
 		defaults[k] = v

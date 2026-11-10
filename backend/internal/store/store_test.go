@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"lightmail/internal/crypto"
@@ -131,7 +132,7 @@ func TestUpsertThreadsAndSearch(t *testing.T) {
 	}
 	// Keyset pagination
 	page1, _ := db.ListMessages(ctx, MessageFilter{UserID: u.ID, Limit: 1})
-	page2, _ := db.ListMessages(ctx, MessageFilter{UserID: u.ID, Limit: 1, CursorDate: page1[0].Date, CursorID: page1[0].ID})
+	page2, _ := db.ListMessages(ctx, MessageFilter{UserID: u.ID, Limit: 1, Cursor: &Cursor{Num: page1[0].Date, ID: page1[0].ID}})
 	if len(page1) != 1 || len(page2) != 1 || page1[0].ID == page2[0].ID {
 		t.Fatal("pagination broken")
 	}
@@ -220,6 +221,80 @@ func TestContacts(t *testing.T) {
 	}
 	if got, _ := db.Contacts(ctx, u.ID+1, "b", 8); len(got) != 0 {
 		t.Fatal("cross-user contacts")
+	}
+}
+
+func TestListMessagesSort(t *testing.T) {
+	db := openTest(t)
+	ctx := context.Background()
+	u, a, f := seedAccount(t, db)
+	other, _ := db.UpsertFolder(ctx, &Folder{AccountID: a.ID, Name: "Other", Selectable: true, SyncEnabled: true})
+	msgs := []*Message{
+		{FolderID: f.ID, UID: 1, Subject: "banane", From: Address{"", "zoe@x.org"}, To: []Address{{"Marc", "m@x.org"}}, Date: 50, InternalDate: 300, Size: 10},
+		{FolderID: f.ID, UID: 2, Subject: "Ananas", From: Address{"Bob", "bob@x.org"}, To: []Address{{"", "alice@x.org"}}, Cc: []Address{{"Carl", "c@x.org"}}, Date: 40, InternalDate: 100, Size: 500},
+		{FolderID: other.ID, UID: 1, Subject: "cerise", From: Address{"alice", "a@x.org"}, Date: 60, InternalDate: 200, Size: 30},
+		{FolderID: other.ID, UID: 2, Subject: "ananas", From: Address{"Bob", "bob2@x.org"}, To: []Address{{"zed", "z@x.org"}}, Date: 40, InternalDate: 400, Size: 30},
+		{FolderID: f.ID, UID: 3, Subject: "", From: Address{"", "yan@x.org"}, Cc: []Address{{"", "aa@x.org"}}, Date: 70, InternalDate: 50, Size: 1},
+	}
+	for _, m := range msgs {
+		m.AccountID = a.ID
+	}
+	if _, err := db.UpsertMessages(ctx, msgs); err != nil {
+		t.Fatal(err)
+	}
+	ids := func(l []*Message) []int64 {
+		out := make([]int64, len(l))
+		for i, m := range l {
+			out[i] = m.ID
+		}
+		return out
+	}
+	for _, sort := range []string{SortSent, SortArrival, SortSubject, SortFrom, SortTo, SortCc, SortSize} {
+		for _, asc := range []bool{false, true} {
+			want, err := db.ListMessages(ctx, MessageFilter{UserID: u.ID, Sort: sort, Asc: asc, Limit: 50})
+			if err != nil || len(want) != len(msgs) {
+				t.Fatalf("%s asc=%v: %d %v", sort, asc, len(want), err)
+			}
+			// In-memory sort used by server-side search must agree with SQL.
+			mem := append([]*Message(nil), want...)
+			SortMessages(mem, sort, !asc) // scramble
+			SortMessages(mem, sort, asc)
+			if fmt.Sprint(ids(mem)) != fmt.Sprint(ids(want)) {
+				t.Fatalf("%s asc=%v: memory %v, sql %v", sort, asc, ids(mem), ids(want))
+			}
+			// Keyset pagination returns the same order, page by page.
+			var got []*Message
+			var cur *Cursor
+			for range len(msgs) + 1 {
+				page, err := db.ListMessages(ctx, MessageFilter{UserID: u.ID, Sort: sort, Asc: asc, Limit: 2, Cursor: cur})
+				if err != nil {
+					t.Fatal(err)
+				}
+				got = append(got, page...)
+				if len(page) < 2 {
+					break
+				}
+				last := page[len(page)-1]
+				n, txt := SortValue(last, sort)
+				cur = &Cursor{Num: n, Text: txt, ID: last.ID}
+			}
+			if fmt.Sprint(ids(got)) != fmt.Sprint(ids(want)) {
+				t.Fatalf("%s asc=%v: paged %v, full %v", sort, asc, ids(got), ids(want))
+			}
+		}
+	}
+	// Spot checks of the expected order.
+	res, _ := db.ListMessages(ctx, MessageFilter{UserID: u.ID, Sort: SortSubject, Asc: true})
+	if res[0].Subject != "" || !strings.EqualFold(res[1].Subject, "ananas") || res[3].Subject != "banane" || res[4].Subject != "cerise" {
+		t.Fatalf("subject asc: %v", ids(res))
+	}
+	res, _ = db.ListMessages(ctx, MessageFilter{UserID: u.ID, Sort: SortSize})
+	if res[0].Size != 500 || res[4].Size != 1 {
+		t.Fatalf("size desc: %v", ids(res))
+	}
+	res, _ = db.ListMessages(ctx, MessageFilter{UserID: u.ID, Sort: SortArrival})
+	if res[0].InternalDate != 400 {
+		t.Fatalf("arrival desc: %v", ids(res))
 	}
 }
 

@@ -1,8 +1,10 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
+	"slices"
 	"strings"
 )
 
@@ -29,9 +31,122 @@ type MessageFilter struct {
 	// Exclude trash/junk from cross-folder views (search, starred).
 	ExcludeTrash bool
 
-	CursorDate int64
-	CursorID   int64
-	Limit      int
+	// Sort is one of the Sort* keys (default SortSent); Asc reverses the
+	// default newest/largest/Z-first order.
+	Sort   string
+	Asc    bool
+	Cursor *Cursor
+	Limit  int
+}
+
+// Cursor is the sort key and id of the last row of the previous page.
+// Num is used by numeric sorts, Text by text sorts.
+type Cursor struct {
+	Num  int64
+	Text string
+	ID   int64
+}
+
+// Sort keys of message lists.
+const (
+	SortSent    = "date"    // Date header of the message
+	SortArrival = "arrival" // reception date on the server (IMAP INTERNALDATE)
+	SortSubject = "subject"
+	SortFrom    = "from"
+	SortTo      = "to" // first recipient
+	SortCc      = "cc" // first copy recipient
+	SortSize    = "size"
+)
+
+type sortKey struct {
+	expr string // SQL expression; text keys are compared with NOCASE
+	text bool
+}
+
+var sortKeys = map[string]sortKey{
+	SortSent:    {"m.date", false},
+	SortArrival: {"m.internal_date", false},
+	SortSubject: {"m.subject", true},
+	SortFrom:    {"COALESCE(NULLIF(m.from_name,''), m.from_addr, '')", true},
+	SortTo:      {"COALESCE(NULLIF(json_extract(m.to_json,'$[0].name'),''), json_extract(m.to_json,'$[0].addr'), '')", true},
+	SortCc:      {"COALESCE(NULLIF(json_extract(m.cc_json,'$[0].name'),''), json_extract(m.cc_json,'$[0].addr'), '')", true},
+	SortSize:    {"m.size", false},
+}
+
+// ValidSort reports whether s is a known sort key ("" means the default).
+func ValidSort(s string) bool {
+	_, ok := sortKeys[s]
+	return ok || s == ""
+}
+
+// SortIsText reports whether the sort key compares text values.
+func SortIsText(s string) bool { return sortKeys[s].text }
+
+func firstAddr(a []Address) string {
+	if len(a) == 0 {
+		return ""
+	}
+	if a[0].Name != "" {
+		return a[0].Name
+	}
+	return a[0].Addr
+}
+
+// SortValue returns the value of m for the sort key, identical to the SQL
+// expression (before NOCASE folding) so that it can be used as a cursor.
+func SortValue(m *Message, sort string) (int64, string) {
+	switch sort {
+	case SortArrival:
+		return m.InternalDate, ""
+	case SortSize:
+		return m.Size, ""
+	case SortSubject:
+		return 0, m.Subject
+	case SortFrom:
+		if m.From.Name != "" {
+			return 0, m.From.Name
+		}
+		return 0, m.From.Addr
+	case SortTo:
+		return 0, firstAddr(m.To)
+	case SortCc:
+		return 0, firstAddr(m.Cc)
+	default:
+		return m.Date, ""
+	}
+}
+
+// foldASCII mirrors SQLite's NOCASE collation (ASCII letters only).
+func foldASCII(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if c >= 'A' && c <= 'Z' {
+			b[i] = c + 32
+		}
+	}
+	return string(b)
+}
+
+// SortMessages orders messages in memory like ListMessages does.
+func SortMessages(msgs []*Message, sort string, asc bool) {
+	text := SortIsText(sort)
+	slices.SortFunc(msgs, func(a, b *Message) int {
+		an, at := SortValue(a, sort)
+		bn, bt := SortValue(b, sort)
+		var r int
+		if text {
+			r = strings.Compare(foldASCII(at), foldASCII(bt))
+		} else {
+			r = cmp.Compare(an, bn)
+		}
+		if r == 0 {
+			r = cmp.Compare(a.ID, b.ID)
+		}
+		if !asc {
+			r = -r
+		}
+		return r
+	})
 }
 
 // candidateFolders resolves the folders a query may return messages from,
@@ -76,12 +191,14 @@ func (db *DB) candidateFolders(ctx context.Context, f MessageFilter) ([]int64, e
 	return ids, rows.Err()
 }
 
-// ListMessages returns messages ordered by date (newest first) using keyset
-// pagination: pass the date and id of the last row as cursor.
+// ListMessages returns messages ordered by f.Sort (default: date, newest
+// first) using keyset pagination: pass the sort value and id of the last row
+// as cursor.
 //
 // Folders are resolved first. A single folder uses the (folder, date) index;
-// several folders scan the global date index newest-first, which avoids
+// for the date sort, several folders scan the global date index, which avoids
 // sorting the whole mailbox (measured: 89 ms -> a few ms at 100k messages).
+// Other sorts have no index and sort the matching rows.
 func (db *DB) ListMessages(ctx context.Context, f MessageFilter) ([]*Message, error) {
 	folders, err := db.candidateFolders(ctx, f)
 	if err != nil {
@@ -89,6 +206,21 @@ func (db *DB) ListMessages(ctx context.Context, f MessageFilter) ([]*Message, er
 	}
 	if len(folders) == 0 {
 		return []*Message{}, nil
+	}
+	if f.Sort == "" {
+		f.Sort = SortSent
+	}
+	key, ok := sortKeys[f.Sort]
+	if !ok {
+		key = sortKeys[SortSent]
+	}
+	sortExpr := key.expr
+	if key.text {
+		sortExpr = "(" + key.expr + ") COLLATE NOCASE"
+	}
+	dir, cmp := "DESC", "<"
+	if f.Asc {
+		dir, cmp = "ASC", ">"
 	}
 	var where []string
 	args := []any{}
@@ -106,7 +238,7 @@ func (db *DB) ListMessages(ctx context.Context, f MessageFilter) ([]*Message, er
 		where = append(where, "m.folder_id IN ("+placeholders(len(folders))+")")
 		args = append(args, int64Args(folders)...)
 		switch {
-		case f.FTS != "":
+		case f.FTS != "", f.Sort != SortSent:
 		case f.Starred:
 			from = " FROM messages m INDEXED BY messages_flagged"
 		default:
@@ -150,16 +282,21 @@ func (db *DB) ListMessages(ctx context.Context, f MessageFilter) ([]*Message, er
 		where = append(where, "m.date<?")
 		args = append(args, f.Before)
 	}
-	if f.CursorDate != 0 || f.CursorID != 0 {
+	if c := f.Cursor; c != nil {
 		// Row-value comparison lets SQLite seek in the index.
-		where = append(where, "(m.date, m.id) < (?, ?)")
-		args = append(args, f.CursorDate, f.CursorID)
+		where = append(where, "("+sortExpr+", m.id) "+cmp+" (?, ?)")
+		if key.text {
+			args = append(args, c.Text, c.ID)
+		} else {
+			args = append(args, c.Num, c.ID)
+		}
 	}
 	limit := f.Limit
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	q := "SELECT " + messageCols + from + " WHERE " + strings.Join(where, " AND ") + " ORDER BY m.date DESC, m.id DESC LIMIT ?"
+	q := "SELECT " + messageCols + from + " WHERE " + strings.Join(where, " AND ") +
+		" ORDER BY " + sortExpr + " " + dir + ", m.id " + dir + " LIMIT ?"
 	args = append(args, limit)
 	rows, err := db.R.QueryContext(ctx, q, args...)
 	if err != nil {
