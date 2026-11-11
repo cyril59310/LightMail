@@ -24,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history and tags, for the changelog
 
       - name: Read the version
         id: v
@@ -121,7 +123,17 @@ jobs:
           IMAGE: ${{ steps.v.outputs.image }}
         run: |
           notes="$(mktemp)"
+          # Commits since the previous version tag (version bumps and merges left out).
+          prev="$(git describe --tags --abbrev=0 --match 'v[0-9]*' "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          range="${prev:+$prev..}${GITHUB_REF_NAME}"
+          changes="$(git log --no-merges --format='- %H %s' "$range" | grep -vE '^- [0-9a-f]+ Version [0-9]' || true)"
           {
+            if [ -n "$changes" ]; then
+              echo "Modifications:"
+              echo
+              echo "$changes"
+              echo
+            fi
             echo "## Docker"
             echo
             echo '```sh'
