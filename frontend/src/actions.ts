@@ -85,3 +85,28 @@ export async function runActionIds(ids: number[], action: Action, folderId?: num
     toast(t('act.failed', { err: e instanceof ApiError ? e.message : String(e) }), 'error')
   }
 }
+
+/**
+ * Deletes every message of a folder or of a unified view (not only the loaded
+ * page), after confirmation. In the trash the deletion is permanent.
+ * Returns true when at least one message was deleted.
+ */
+export async function deleteAll(target: { folderId: number } | { role: string }, name: string): Promise<boolean> {
+  const role = 'role' in target ? target.role : getState().folders.find((f) => f.id === target.folderId)?.role
+  const permanent = role === 'trash'
+  const message = t(permanent ? 'list.deleteAllForeverConfirm' : 'list.deleteAllConfirm', { name })
+  if (!(await confirmDialog(message, { danger: true, confirmLabel: permanent ? t('act.deleteForever') : t('list.deleteAll') }))) return false
+  try {
+    const r = await api.post<{ deleted: number; failed: number; error: string }>('/messages/delete-all', target)
+    if (r.failed) toast(t('list.deleteAllPartial', { n: r.deleted, failed: r.failed, err: r.error }), 'error')
+    else toast(t('list.deleteAllDone', { n: r.deleted }))
+    return r.deleted > 0
+  } catch (e) {
+    toast(t('act.failed', { err: e instanceof ApiError ? e.message : String(e) }), 'error')
+    return false
+  } finally {
+    bumpLists()
+    void loadCounters().catch(() => {})
+    void loadFolders().catch(() => {})
+  }
+}

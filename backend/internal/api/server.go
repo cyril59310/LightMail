@@ -121,6 +121,7 @@ func (s *Server) Handler() http.Handler {
 	priv("GET /api/v1/messages", s.listMessages)
 	priv("GET /api/v1/search", s.searchMessages)
 	priv("POST /api/v1/messages/actions", s.messageActions)
+	priv("POST /api/v1/messages/delete-all", s.deleteAllMessages)
 	priv("POST /api/v1/messages/send", s.sendMessage)
 	priv("GET /api/v1/messages/{id}", s.getMessage)
 	priv("GET /api/v1/messages/{id}/body.html", s.messageHTML)

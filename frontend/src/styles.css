@@ -258,6 +258,11 @@ input[type='checkbox'] {
   background: var(--hover);
   color: var(--text);
 }
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  background: transparent;
+}
 .icon-btn.small {
   width: 26px;
   height: 26px;

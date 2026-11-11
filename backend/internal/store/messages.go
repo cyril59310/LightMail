@@ -434,3 +434,28 @@ func (db *DB) ThreadMessages(ctx context.Context, userID, accountID, threadID in
 	}
 	return out, rows.Err()
 }
+
+// ViewFolders returns the folders a message view covers (f.UserID, and
+// f.FolderID or f.Role with f.AccountIDs), as ListMessages resolves them.
+func (db *DB) ViewFolders(ctx context.Context, f MessageFilter) ([]int64, error) {
+	return db.candidateFolders(ctx, f)
+}
+
+// FolderMessagesAfter returns up to limit messages of a folder with an id
+// greater than afterID, by id: walks a whole folder in batches.
+func (db *DB) FolderMessagesAfter(ctx context.Context, folderID, afterID int64, limit int) ([]*Message, error) {
+	rows, err := db.R.QueryContext(ctx, `SELECT `+messageCols+` FROM messages m WHERE m.folder_id=? AND m.id>? ORDER BY m.id LIMIT ?`, folderID, afterID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Message
+	for rows.Next() {
+		m, err := scanMessage(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}

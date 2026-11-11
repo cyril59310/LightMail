@@ -555,6 +555,76 @@ func (s *Server) messageActions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, status, res)
 }
 
+// deleteAllMessages deletes every message of a view without the client listing
+// them: a folder (folderId) or a unified view (role). Messages go to the trash,
+// or are deleted for good when they already are in it, like the "trash" action.
+// Only messages already synchronised locally are affected.
+func (s *Server) deleteAllMessages(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		FolderID int64  `json:"folderId"`
+		Role     string `json:"role"`
+	}
+	if !readJSON(w, r, &req, 4<<10) {
+		return
+	}
+	u := userFrom(r)
+	f := store.MessageFilter{UserID: u.ID}
+	switch {
+	case req.FolderID != 0:
+		f.FolderID = req.FolderID
+	case req.Role == store.RoleInbox, req.Role == store.RoleSent, req.Role == store.RoleDrafts,
+		req.Role == store.RoleTrash, req.Role == store.RoleJunk, req.Role == store.RoleArchive:
+		f.Role = req.Role
+		f.AccountIDs = s.unifiedAccounts(r.Context(), u.ID)
+	default:
+		badRequest(w, "folderId or a valid role is required")
+		return
+	}
+	folders, err := s.DB.ViewFolders(r.Context(), f)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if req.FolderID != 0 && len(folders) == 0 {
+		s.fail(w, r, store.ErrNotFound)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+	defer cancel()
+	const batch = 500
+	deleted, failed, firstErr := 0, 0, ""
+	for _, fid := range folders {
+		var after int64
+		for {
+			msgs, err := s.DB.FolderMessagesAfter(ctx, fid, after, batch)
+			if err != nil {
+				s.fail(w, r, err)
+				return
+			}
+			if len(msgs) == 0 {
+				break
+			}
+			after = msgs[len(msgs)-1].ID
+			res := s.Engine.Apply(ctx, u.ID, msgs, syncer.ActTrash, 0)
+			deleted += len(res.OK)
+			failed += len(res.Failed)
+			for _, e := range res.Failed {
+				if firstErr == "" {
+					firstErr = e
+				}
+			}
+			if len(res.OK) == 0 {
+				break // the folder cannot be emptied (no trash, server error): stop there
+			}
+		}
+	}
+	status := http.StatusOK
+	if deleted == 0 && failed > 0 {
+		status = http.StatusBadGateway
+	}
+	writeJSON(w, status, map[string]any{"deleted": deleted, "failed": failed, "error": firstErr})
+}
+
 // ---- folders -----------------------------------------------------------
 
 func (s *Server) listFolders(w http.ResponseWriter, r *http.Request) {

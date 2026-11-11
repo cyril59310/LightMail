@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ApiError, api, qs } from '../api'
-import { confirmAction, optimisticPatch, runAction, type Action } from '../actions'
+import { confirmAction, deleteAll, optimisticPatch, runAction, type Action } from '../actions'
 import { t } from '../i18n'
 import { openCompose, saveSettings, setState, toast, useStore } from '../store'
 import type { Account, Message, Page } from '../types'
@@ -185,6 +185,22 @@ export function MessageList({ spec, selectedId, onSelect, handleRef, title, show
 
   handleRef.current = { items, selectNext, act }
 
+  // "Delete all" covers the whole folder or unified view, not only the loaded page.
+  const deleteAllTarget = spec.kind === 'folder' ? { folderId: spec.folderId } : spec.kind === 'unified' ? { role: spec.role } : null
+  const [deletingAll, setDeletingAll] = useState(false)
+  const onDeleteAll = async () => {
+    if (!deleteAllTarget) return
+    setDeletingAll(true)
+    try {
+      if (await deleteAll(deleteAllTarget, title)) {
+        setChecked(new Set())
+        onSelect(null)
+      }
+    } finally {
+      setDeletingAll(false)
+    }
+  }
+
   // Mark as read locally when opened (the reader performs the server call).
   useEffect(() => {
     if (selectedId && settings.markReadOnOpen === 'true') patch([selectedId], { seen: true })
@@ -300,6 +316,11 @@ export function MessageList({ spec, selectedId, onSelect, handleRef, title, show
                 </div>
               )}
             </div>
+            {deleteAllTarget && (
+              <button className="icon-btn" onClick={() => void onDeleteAll()} title={t('list.deleteAll')} aria-label={t('list.deleteAll')} disabled={!items.length || deletingAll}>
+                <Icon name="trash" />
+              </button>
+            )}
             <button className="icon-btn" onClick={() => void load(true)} title="↻" aria-label="refresh">
               <Icon name="refresh" className={loading ? 'spin' : ''} />
             </button>
