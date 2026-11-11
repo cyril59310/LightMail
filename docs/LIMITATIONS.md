@@ -11,8 +11,6 @@
 - **Synchronisation des contacts et calendriers** (CardDAV/CalDAV). LightMail a un carnet d'adresses local, propre à chaque utilisateur, mais il n'est ni synchronisé avec un serveur ni importable/exportable (vCard).
 - **Mode hors ligne / PWA**, notifications Web Push (les notifications navigateur ne fonctionnent qu'onglet ouvert).
 - **S/MIME, PGP**.
-- **Images collées dans l'éditeur**, glisser-déposer de fichiers dans le compositeur (le bouton *Joindre* fonctionne).
-- **Aperçu des pièces jointes** (PDF, images) : téléchargement uniquement, sauf images intégrées `cid:`.
 - **Import/export de configuration**. L'export de messages au format EML existe, message par message.
 - **Accusés de lecture reçus** : LightMail peut en *demander* (`Disposition-Notification-To`), mais n'en envoie pas automatiquement (choix de confidentialité).
 
