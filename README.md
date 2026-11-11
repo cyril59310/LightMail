@@ -74,7 +74,7 @@ make dev-mail        # serveurs IMAPS/SMTPS locaux avec messages générés
 make dev             # backend (export LIGHTMAIL_MASTER_KEY=$(go run ./backend/cmd/lightmail gen-key))
 cd frontend && npm run dev   # interface sur http://localhost:5173 (proxy vers :8080)
 make test            # tests Go + TypeScript
-make up-local        # construire l'image depuis les sources et démarrer dessus
+make up-local        # construire l'image depuis les sources et démarrer dessus (copier le docker-compose.yml en docker-compose-dev.yml avant)
 ```
 
 ### Publier une release

@@ -15,3 +15,4 @@ backend/internal/web/dist/*
 !backend/internal/web/dist/.keep
 *.exe
 /bin/
+docker-compose-dev.yml

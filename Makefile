@@ -56,7 +56,7 @@ update: ## Pull the published image and restart on it
 	$(COMPOSE) up -d
 
 up-local: ## Build the image from the sources and start on it
-	$(COMPOSE) -f docker-compose.yml -f docker-compose.build.yml up -d --build
+	$(COMPOSE) -f docker-compose-dev.yml -f docker-compose.build.yml up -d --build
 
 down: ## Stop
 	$(COMPOSE) down
