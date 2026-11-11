@@ -511,6 +511,10 @@ paths:
     delete: { summary: Remove a finished item, responses: { "204": { description: OK } } }
   /notifications:
     get: { summary: Recent notifications, responses: { "200": { description: OK } } }
+    delete: { summary: Delete all notifications, responses: { "204": { description: OK } } }
+  /notifications/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    delete: { summary: Delete one notification, responses: { "204": { description: OK } } }
   /notifications/read:
     post:
       summary: Mark notifications as read (empty ids = all)

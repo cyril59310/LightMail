@@ -442,6 +442,7 @@ const fr = {
   'notif.title': 'Notifications',
   'notif.empty': 'Aucune notification',
   'notif.markAll': 'Tout marquer comme lu',
+  'notif.clearAll': 'Tout effacer',
   'notif.newMail': 'Nouveau message de {from}',
 
   'time.yesterday': 'Hier',
@@ -884,6 +885,7 @@ const en: Dict = {
   'notif.title': 'Notifications',
   'notif.empty': 'No notifications',
   'notif.markAll': 'Mark all as read',
+  'notif.clearAll': 'Clear all',
   'notif.newMail': 'New message from {from}',
   'time.yesterday': 'Yesterday',
   'size.b': 'B',

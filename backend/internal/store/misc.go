@@ -102,6 +102,17 @@ func (db *DB) MarkNotificationsRead(ctx context.Context, userID int64, ids []int
 	return err
 }
 
+// DeleteNotifications removes the given notifications (empty ids = all of the user's).
+func (db *DB) DeleteNotifications(ctx context.Context, userID int64, ids []int64) error {
+	if len(ids) == 0 {
+		_, err := db.W.ExecContext(ctx, `DELETE FROM notifications WHERE user_id=?`, userID)
+		return err
+	}
+	args := append([]any{userID}, int64Args(ids)...)
+	_, err := db.W.ExecContext(ctx, `DELETE FROM notifications WHERE user_id=? AND id IN (`+placeholders(len(ids))+`)`, args...)
+	return err
+}
+
 // ---- Blobs & uploads ----------------------------------------------------
 
 func (db *DB) TouchBlob(ctx context.Context, sha string, size int64) error {

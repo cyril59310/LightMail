@@ -143,6 +143,8 @@ func (s *Server) Handler() http.Handler {
 
 	priv("GET /api/v1/notifications", s.listNotifications)
 	priv("POST /api/v1/notifications/read", s.readNotifications)
+	priv("DELETE /api/v1/notifications", s.clearNotifications)
+	priv("DELETE /api/v1/notifications/{id}", s.deleteNotification)
 	priv("GET /api/v1/events", s.eventStream)
 	priv("GET /api/v1/settings", s.getSettings)
 	priv("PUT /api/v1/settings", s.putSettings)

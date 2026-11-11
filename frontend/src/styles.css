@@ -1724,6 +1724,14 @@ legend {
 .plain-list li.read {
   opacity: 0.65;
 }
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.notif-item .grow {
+  overflow-wrap: anywhere;
+}
 .outbox-list {
   list-style: none;
   padding: 0;

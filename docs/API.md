@@ -41,7 +41,7 @@ curl -s -b ck.txt -X POST -H 'Content-Type: application/json' -H "Origin: https:
 | Rédaction | `POST /uploads`, `DELETE /uploads/{id}`, `GET/POST /drafts`, `GET/PUT/DELETE /drafts/{id}`, `POST /messages/send`, `GET /contacts` (autocomplétion : contacts enregistrés d'abord, marqués `saved`) |
 | Carnet d'adresses (propre à chaque utilisateur) | `GET/POST /address-book` (`{"name", "email", "notes"}`, `409 contact_exists`), `PUT/DELETE /address-book/{id}` (`404` pour le contact d'un autre utilisateur) |
 | File d'envoi | `GET /outbox`, `POST /outbox/{id}/cancel`, `POST /outbox/{id}/retry`, `DELETE /outbox/{id}` |
-| Divers | `GET /notifications`, `POST /notifications/read`, `GET /events`, `GET/PUT /settings`, `GET /branding/logo`, `GET /metrics` (jeton), `GET /health` |
+| Divers | `GET /notifications`, `POST /notifications/read`, `DELETE /notifications[/{id}]`, `GET /events`, `GET/PUT /settings`, `GET /branding/logo`, `GET /metrics` (jeton), `GET /health` |
 | Administration (administrateurs, sinon `403`) | `GET /status`, `GET /metrics` (par session), `POST/DELETE /branding/logo`, `GET/POST /users` (création : `{"username", "password", "isAdmin"}`, `409 username_taken`), `PATCH /users/{id}` `{"isAdmin": bool}`, `DELETE /users/{id}` (pas soi-même ; supprime ses comptes mail et données locales) ; `409 last_admin` protège le dernier administrateur |
 
 Par rapport aux routes indicatives du cahier des charges, les actions sur les messages (lu, archive, déplacement, suppression…) sont regroupées dans `POST /messages/actions`, qui accepte jusqu'à 1 000 identifiants et renvoie le résultat message par message. L'envoi est asynchrone (`202` + élément de file d'envoi) ; son résultat arrive par SSE.

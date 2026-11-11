@@ -105,6 +105,27 @@ func (s *Server) readNotifications(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) deleteNotification(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r, "id")
+	if !ok {
+		badRequest(w, "invalid id")
+		return
+	}
+	if err := s.DB.DeleteNotifications(r.Context(), userFrom(r).ID, []int64{id}); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) clearNotifications(w http.ResponseWriter, r *http.Request) {
+	if err := s.DB.DeleteNotifications(r.Context(), userFrom(r).ID, nil); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // eventStream pushes real-time events with Server-Sent Events.
 func (s *Server) eventStream(w http.ResponseWriter, r *http.Request) {
 	rc := http.NewResponseController(w)

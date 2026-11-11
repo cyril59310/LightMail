@@ -1,6 +1,6 @@
 import { ApiError, api } from '../api'
 import { t } from '../i18n'
-import { loadNotifications, loadOutbox, toast, useStore } from '../store'
+import { deleteNotification, loadNotifications, loadOutbox, toast, useStore } from '../store'
 import type { OutboxItem } from '../types'
 import { relativeTime, shortDate } from '../util'
 import { Icon } from './Icons'
@@ -79,6 +79,11 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
         >
           {t('notif.markAll')}
         </button>
+        {items.length > 0 && (
+          <button className="link small" onClick={() => void deleteNotification()}>
+            {t('notif.clearAll')}
+          </button>
+        )}
         <button className="icon-btn small" onClick={onClose} aria-label={t('act.close')}>
           <Icon name="x" size={14} />
         </button>
@@ -86,10 +91,15 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
       {items.length === 0 && <p className="muted small">{t('notif.empty')}</p>}
       <ul className="plain-list">
         {items.slice(0, 30).map((n) => (
-          <li key={n.id} className={n.readAt ? 'read' : ''}>
-            <strong>{n.title}</strong>
-            {n.body && <span className="block small">{n.body}</span>}
-            <span className="muted small">{relativeTime(n.createdAt)}</span>
+          <li key={n.id} className={`notif-item${n.readAt ? ' read' : ''}`}>
+            <div className="grow">
+              <strong>{n.title}</strong>
+              {n.body && <span className="block small">{n.body}</span>}
+              <span className="muted small">{relativeTime(n.createdAt)}</span>
+            </div>
+            <button className="icon-btn small" onClick={() => void deleteNotification(n.id)} aria-label={t('act.delete')} title={t('act.delete')}>
+              <Icon name="trash" size={14} />
+            </button>
           </li>
         ))}
       </ul>

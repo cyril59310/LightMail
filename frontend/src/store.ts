@@ -127,6 +127,16 @@ export async function saveAccountLayout(layout: AccountLayout) {
   }
 }
 
+// deleteNotification removes one notification, or all of them when id is omitted.
+export async function deleteNotification(id?: number) {
+  setState((s) => ({ notifications: id === undefined ? [] : s.notifications.filter((n) => n.id !== id) }))
+  try {
+    await api.del(id === undefined ? '/notifications' : `/notifications/${id}`)
+  } catch {
+    void loadNotifications()
+  }
+}
+
 export async function loadNotifications() {
   const r = await api.get<{ items: Notification[] }>('/notifications')
   setState({ notifications: r.items })
