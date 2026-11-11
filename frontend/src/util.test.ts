@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Account, Endpoint } from './types'
-import { accountLayout, escapeHTML, hasServerPreset, isEmail, mentionsAttachment, moveAccount, orderedAccounts, parseAddresses, serverPresets } from './util'
+import { accountLayout, escapeHTML, hasServerPreset, isEmail, mentionsAttachment, moveAccount, orderedAccounts, parseAddresses, previewKind, serverPresets } from './util'
 
 describe('server presets', () => {
   const imap: Endpoint = { host: 'imap.x.fr', port: 993, security: 'tls' }
@@ -88,5 +88,24 @@ describe('mentionsAttachment', () => {
 describe('escapeHTML', () => {
   it('escapes markup', () => {
     expect(escapeHTML(`<img src=x onerror="alert('x')">&`)).toBe('&lt;img src=x onerror=&quot;alert(&#39;x&#39;)&quot;&gt;&amp;')
+  })
+})
+
+describe('attachment preview', () => {
+  it('uses the declared type, then the extension', () => {
+    expect(previewKind('image/png', 'a.png')).toBe('image')
+    expect(previewKind('IMAGE/JPG', 'photo')).toBe('image')
+    expect(previewKind('application/pdf; name=x.pdf', 'x.pdf')).toBe('pdf')
+    expect(previewKind('application/octet-stream', 'Facture.PDF')).toBe('pdf')
+    expect(previewKind('application/octet-stream', 'notes.txt')).toBe('text')
+    expect(previewKind('text/csv', 'export.csv')).toBe('text')
+    expect(previewKind('video/mp4', 'clip.mp4')).toBe('video')
+  })
+
+  it('shows active formats as source text and refuses unknown ones', () => {
+    expect(previewKind('text/html', 'page.html')).toBe('text')
+    expect(previewKind('image/svg+xml', 'logo.svg')).toBe('text')
+    expect(previewKind('application/zip', 'photo.png')).toBeNull()
+    expect(previewKind('application/octet-stream', 'setup.exe')).toBeNull()
   })
 })

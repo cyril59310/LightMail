@@ -212,3 +212,37 @@ export function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number)
     h = setTimeout(() => fn(...a), ms)
   }
 }
+
+export type PreviewKind = 'image' | 'pdf' | 'audio' | 'video' | 'text'
+
+// Keep in sync with previewType in backend/internal/api/messages_handlers.go:
+// the server only serves these types inline (?inline=1).
+const inlineTypes: Record<string, PreviewKind> = {
+  'image/png': 'image', 'image/jpeg': 'image', 'image/gif': 'image', 'image/webp': 'image', 'image/bmp': 'image', 'image/avif': 'image',
+  'application/pdf': 'pdf',
+  'audio/mpeg': 'audio', 'audio/ogg': 'audio', 'audio/wav': 'audio', 'audio/webm': 'audio', 'audio/mp4': 'audio', 'audio/flac': 'audio',
+  'video/mp4': 'video', 'video/webm': 'video', 'video/ogg': 'video',
+}
+const inlineExts: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', avif: 'image/avif',
+  pdf: 'application/pdf',
+  mp3: 'audio/mpeg', ogg: 'audio/ogg', oga: 'audio/ogg', wav: 'audio/wav', m4a: 'audio/mp4', flac: 'audio/flac',
+  mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', ogv: 'video/ogg',
+}
+// Text is downloaded and shown as plain text by the app, never rendered (HTML and SVG show their source).
+const textTypes = new Set(['image/svg+xml', 'application/json', 'application/xml', 'application/x-yaml', 'application/yaml', 'application/csv'])
+const textExts = new Set(['txt', 'text', 'log', 'csv', 'tsv', 'md', 'markdown', 'json', 'xml', 'yml', 'yaml', 'ini', 'conf', 'cfg', 'ics', 'vcf'])
+
+/** How an attachment can be previewed in the app, or null when it can only be downloaded. */
+export function previewKind(contentType: string, filename: string): PreviewKind | null {
+  let ct = contentType.split(';')[0].trim().toLowerCase()
+  if (ct === 'image/jpg' || ct === 'image/pjpeg') ct = 'image/jpeg'
+  const ext = /\.([a-z0-9]+)$/i.exec(filename)?.[1].toLowerCase() ?? ''
+  if (inlineTypes[ct]) return inlineTypes[ct]
+  if (ct.startsWith('text/') || textTypes.has(ct)) return 'text'
+  if (ct === '' || ct === 'application/octet-stream' || ct === 'binary/octet-stream' || ct === 'application/x-download') {
+    if (inlineExts[ext]) return inlineTypes[inlineExts[ext]]
+    if (textExts.has(ext)) return 'text'
+  }
+  return null
+}

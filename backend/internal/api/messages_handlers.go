@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -355,7 +356,37 @@ func (s *Server) messageHTML(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.WriteString(w, lmime.WrapDocument(html))
 }
 
-var inlineSafeTypes = map[string]bool{"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true}
+// Types an attachment may be served as for an in-app preview (?inline=1).
+// No HTML or SVG: they could run script in our origin.
+var inlineSafeTypes = map[string]bool{
+	"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true, "image/bmp": true, "image/avif": true,
+	"application/pdf": true,
+	"audio/mpeg":      true, "audio/ogg": true, "audio/wav": true, "audio/webm": true, "audio/mp4": true, "audio/flac": true,
+	"video/mp4": true, "video/webm": true, "video/ogg": true,
+}
+
+// Senders often label attachments application/octet-stream: fall back to the extension.
+var inlineTypesByExt = map[string]string{
+	".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp", ".avif": "image/avif",
+	".pdf": "application/pdf",
+	".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".oga": "audio/ogg", ".wav": "audio/wav", ".m4a": "audio/mp4", ".flac": "audio/flac",
+	".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm", ".ogv": "video/ogg",
+}
+
+// previewType returns the type to serve an attachment inline with, or "" when it cannot be previewed safely.
+func previewType(contentType, filename string) string {
+	ct := strings.ToLower(strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0]))
+	if ct == "image/jpg" || ct == "image/pjpeg" {
+		ct = "image/jpeg"
+	}
+	if inlineSafeTypes[ct] {
+		return ct
+	}
+	if ct == "" || ct == "application/octet-stream" || ct == "binary/octet-stream" || ct == "application/x-download" {
+		return inlineTypesByExt[strings.ToLower(path.Ext(filename))]
+	}
+	return ""
+}
 
 func contentDisposition(kind, filename string) string {
 	return mime.FormatMediaType(kind, map[string]string{"filename": filename})
@@ -399,16 +430,21 @@ func (s *Server) attachment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
-	ct := strings.ToLower(att.ContentType)
+	ct := previewType(att.ContentType, att.Filename)
 	h := w.Header()
 	// Never let a downloaded file render as an active document in our origin.
 	h.Set("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox")
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Cache-Control", "private, max-age=3600")
-	if r.URL.Query().Get("inline") == "1" && inlineSafeTypes[ct] {
+	if r.URL.Query().Get("inline") == "1" && ct != "" {
 		h.Set("Content-Type", ct)
 		h.Set("Content-Disposition", contentDisposition("inline", att.Filename))
 		h.Set("X-Frame-Options", "SAMEORIGIN")
+		if ct == "application/pdf" {
+			// Browsers refuse to open a PDF in a sandboxed document, and their
+			// viewer is an embedded object: no sandbox, frames from us only.
+			h.Set("Content-Security-Policy", "frame-ancestors 'self'")
+		}
 	} else {
 		h.Set("Content-Type", "application/octet-stream")
 		h.Set("Content-Disposition", contentDisposition("attachment", att.Filename))

@@ -4,7 +4,8 @@ import type { Action } from '../actions'
 import { t } from '../i18n'
 import { openCompose, useStore } from '../store'
 import type { Folder, MessageDetail } from '../types'
-import { accountColor, accountLabel, displayName, folderLabel, formatAddress, formatSize, fullDate, shortDate } from '../util'
+import { accountColor, accountLabel, displayName, folderLabel, formatAddress, formatSize, fullDate, previewKind, shortDate } from '../util'
+import { AttachmentViewer, attachmentURL } from './AttachmentViewer'
 import { saveToContacts } from './Contacts'
 import { Modal } from './Dialogs'
 import { Icon } from './Icons'
@@ -26,6 +27,9 @@ export function Reader({ messageId, onAct, onClose, onOpenMessage }: Props) {
   const [plain, setPlain] = useState(false)
   const [headers, setHeaders] = useState<string | null>(null)
   const [moveOpen, setMoveOpen] = useState(false)
+  // Index in previewAtts of the attachment shown in the viewer.
+  const [preview, setPreview] = useState<number | null>(null)
+  useEffect(() => setPreview(null), [messageId])
 
   useEffect(() => {
     const ctl = new AbortController()
@@ -66,6 +70,7 @@ export function Reader({ messageId, onAct, onClose, onOpenMessage }: Props) {
   const isDraft = m.draft || role === 'drafts'
   const accountFolders = folders.filter((f) => f.accountId === m.accountId && f.selectable && f.id !== m.folderId)
   const visibleAtts = detail.attachments.filter((a) => !a.inline)
+  const previewAtts = visibleAtts.filter((a) => previewKind(a.contentType, a.filename))
 
   return (
     <article className="reader" aria-label={m.subject}>
@@ -193,16 +198,34 @@ export function Reader({ messageId, onAct, onClose, onOpenMessage }: Props) {
           <div className="attachments">
             <div className="muted small">{t('read.attachments', { n: visibleAtts.length })}</div>
             <div className="att-grid">
-              {visibleAtts.map((a) => (
-                <a key={a.id} className="att" href={`/api/v1/messages/${m.id}/attachments/${a.id}`} download={a.filename} title={t('act.download')}>
-                  <Icon name={a.contentType.startsWith('image/') ? 'image' : 'paperclip'} />
-                  <span className="att-name">{a.filename}</span>
-                  <span className="muted small">{formatSize(a.size)}</span>
-                </a>
-              ))}
+              {visibleAtts.map((a) => {
+                const label = (
+                  <>
+                    <Icon name={a.contentType.startsWith('image/') ? 'image' : 'paperclip'} />
+                    <span className="att-name">{a.filename}</span>
+                    <span className="muted small">{formatSize(a.size)}</span>
+                  </>
+                )
+                const at = previewAtts.indexOf(a)
+                return at < 0 ? (
+                  <a key={a.id} className="att att-main" href={attachmentURL(m.id, a)} download={a.filename} title={t('act.download')}>
+                    {label}
+                  </a>
+                ) : (
+                  <div key={a.id} className="att">
+                    <button className="att-main" onClick={() => setPreview(at)} title={t('att.preview')}>
+                      {label}
+                    </button>
+                    <a className="icon-btn small" href={attachmentURL(m.id, a)} download={a.filename} title={t('act.download')} aria-label={t('act.download')}>
+                      <Icon name="download" size={16} />
+                    </a>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
+        {preview !== null && <AttachmentViewer messageId={m.id} attachments={previewAtts} start={preview} onClose={() => setPreview(null)} />}
 
         {detail.thread.length > 1 && (
           <div className="thread">
