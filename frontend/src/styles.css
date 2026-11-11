@@ -433,6 +433,17 @@ input[type='checkbox'] {
   gap: 14px;
   box-shadow: var(--shadow);
 }
+.login-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.login-lang {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  font-size: 13px;
+}
 .login-card h1 {
   margin: 0;
   font-size: 20px;

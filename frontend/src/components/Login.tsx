@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { ApiError, api, setCsrfToken } from '../api'
-import { t } from '../i18n'
+import { getLanguage, languages, setLanguage, t, useLanguage } from '../i18n'
+import { saveSettings } from '../store'
 import type { Me } from '../types'
 import { BrandMark } from './Icons'
 
@@ -12,6 +13,10 @@ export function Login({ me, onLogin }: { me: Me; onLogin: () => void }) {
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const lang = useLanguage()
+  // Language picked on this page: saved to the user's settings once signed in,
+  // otherwise their saved language would replace it right after login.
+  const [pickedLang, setPickedLang] = useState(false)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -22,6 +27,7 @@ export function Login({ me, onLogin }: { me: Me; onLogin: () => void }) {
       setCsrfToken(r.csrfToken)
       setPassword('')
       setCode('')
+      if (pickedLang) await saveSettings({ language: getLanguage() }).catch(() => {})
       onLogin()
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) setError(t('login.locked'))
@@ -96,7 +102,24 @@ export function Login({ me, onLogin }: { me: Me; onLogin: () => void }) {
             {t('act.back')}
           </button>
         )}
-        <p className="muted small center">v{me.version}</p>
+        <div className="login-footer muted small">
+          <span>v{me.version}</span>
+          <select
+            className="login-lang"
+            aria-label={t('set.language')}
+            value={lang}
+            onChange={(e) => {
+              setLanguage(e.target.value)
+              setPickedLang(true)
+            }}
+          >
+            {languages.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </form>
     </div>
   )

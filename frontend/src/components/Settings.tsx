@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { ApiError, api } from '../api'
-import { setLanguage, t } from '../i18n'
+import { languages, setLanguage, t } from '../i18n'
 import { href, navigate, useRoute } from '../router'
 import { getState, setState, loadAccounts, loadFolders, saveAccountLayout, saveSettings, toast, useStore } from '../store'
 import type { Account } from '../types'
@@ -98,7 +98,7 @@ function General() {
   const unified = settings.unifiedAccounts === 'all' || !settings.unifiedAccounts ? null : (JSON.parse(settings.unifiedAccounts) as number[])
   return (
     <div className="card form">
-      <Select k="language" label={t('set.language')} options={[['fr', 'Français'], ['en', 'English']]} />
+      <Select k="language" label={t('set.language')} options={languages.map((l) => [l.code, l.name])} />
       <Select k="theme" label={t('set.theme')} options={[['system', t('set.theme.system')], ['light', t('set.theme.light')], ['dark', t('set.theme.dark')]]} />
       <Select k="timezone" label={t('set.timezone')} options={[['', t('set.timezoneAuto', { tz: browserTZ })], ...zones.map((z) => [z, z] as [string, string])]} />
       <Select k="pageSize" label={t('set.pageSize')} options={[['25', '25'], ['50', '50'], ['100', '100'], ['200', '200']]} />

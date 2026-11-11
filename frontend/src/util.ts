@@ -1,4 +1,4 @@
-import { getLanguage, t } from './i18n'
+import { getLocale, t } from './i18n'
 import { getState } from './store'
 import type { Account, AccountLayout, Address, Endpoint, Folder, ServerPreset } from './types'
 
@@ -7,7 +7,7 @@ function tz(): string | undefined {
 }
 
 function locale() {
-  return getLanguage() === 'fr' ? 'fr-FR' : 'en-GB'
+  return getLocale()
 }
 
 /** Compact date for lists: time today, "Yesterday", day/month this year, full date otherwise. */

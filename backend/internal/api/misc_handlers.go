@@ -167,7 +167,7 @@ func (s *Server) eventStream(w http.ResponseWriter, r *http.Request) {
 // ---- settings ----------------------------------------------------------
 
 var settingRules = map[string]*regexp.Regexp{
-	"language":             regexp.MustCompile(`^(fr|en)$`),
+	"language":             regexp.MustCompile(`^[a-z]{2,3}(-[A-Z]{2})?$`), // any code registered in frontend/src/i18n
 	"theme":                regexp.MustCompile(`^(light|dark|system)$`),
 	"timezone":             regexp.MustCompile(`^[A-Za-z_]+(/[A-Za-z0-9_+\-]+){0,2}$|^UTC$|^$`),
 	"pageSize":             regexp.MustCompile(`^(25|50|100|200)$`),
